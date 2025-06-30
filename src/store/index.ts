@@ -20,6 +20,7 @@ interface AppState {
   setProjects: (projects: Project[]) => void;
   selectProject: (projectId: string | null) => void;
   setProjectData: (data: ProjectFiles | null) => void;
+  deleteProject: (projectId: string) => void;
   setGenerating: (isGenerating: boolean) => void;
   addProgress: (progress: GenerationProgress) => void;
   clearProgress: () => void;
@@ -43,10 +44,28 @@ export const useStore = create<AppState>((set) => ({
   setProjects: (projects) => set({ projects }),
   selectProject: (projectId) => set({ selectedProjectId: projectId }),
   setProjectData: (data) => set({ currentProjectData: data }),
-  setGenerating: (isGenerating) => set({ isGenerating }),
-  addProgress: (progress) => set((state) => ({
-    generationProgress: [...state.generationProgress, progress]
+  deleteProject: (projectId) => set((state) => ({
+    projects: state.projects.filter(p => p.id !== projectId),
+    selectedProjectId: state.selectedProjectId === projectId ? null : state.selectedProjectId,
+    currentProjectData: state.selectedProjectId === projectId ? null : state.currentProjectData,
   })),
+  setGenerating: (isGenerating) => set({ isGenerating }),
+  addProgress: (progress) => set((state) => {
+    console.log('Progress update:', progress);
+    
+    // Find if this node already exists in progress
+    const existingIndex = state.generationProgress.findIndex(p => p.node === progress.node);
+    
+    if (existingIndex >= 0) {
+      // Update existing progress
+      const updated = [...state.generationProgress];
+      updated[existingIndex] = progress;
+      return { generationProgress: updated };
+    } else {
+      // Add new progress
+      return { generationProgress: [...state.generationProgress, progress] };
+    }
+  }),
   clearProgress: () => set({ generationProgress: [] }),
   setCurrentTab: (tab) => set({ currentTab: tab }),
   setUiViewMode: (mode) => set({ uiViewMode: mode }),

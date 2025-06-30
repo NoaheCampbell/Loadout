@@ -19,6 +19,12 @@ export default defineConfig(({ command }) => {
         '@': path.join(__dirname, 'src')
       },
     },
+    optimizeDeps: {
+      include: [
+        '@monaco-editor/react',
+        'monaco-editor'
+      ],
+    },
     plugins: [
       react(),
       electron({

@@ -1,17 +1,33 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Sparkles, Loader2 } from 'lucide-react'
 import { useStore } from '../../store'
 import { ipc } from '../../lib/ipc'
 import toast from 'react-hot-toast'
-import { nanoid } from 'nanoid'
 
 interface IdeaTabProps {
   isNewProject?: boolean
 }
 
 export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
-  const [idea, setIdea] = useState('')
-  const { isGenerating, setGenerating, addProgress, clearProgress, selectProject, setCurrentTab } = useStore()
+  const { 
+    isGenerating, 
+    setGenerating, 
+    addProgress, 
+    clearProgress, 
+    selectProject, 
+    setCurrentTab,
+    setProjects,
+    setProjectData,
+    currentProjectData,
+    generationProgress 
+  } = useStore()
+  
+  const [idea, setIdea] = useState(currentProjectData?.idea || '')
+
+  // Update idea when project changes
+  useEffect(() => {
+    setIdea(currentProjectData?.idea || '')
+  }, [currentProjectData])
 
   const handleGenerate = async () => {
     if (!idea.trim()) {
@@ -19,26 +35,59 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
       return
     }
 
+    // Confirm if regenerating
+    if (currentProjectData?.prd) {
+      const confirmed = window.confirm('This will replace the existing PRD and all generated content. Continue?')
+      if (!confirmed) return
+    }
+
     setGenerating(true)
     clearProgress()
 
     try {
-      // Create a new project ID
-      const projectId = nanoid()
-      
       // Set up progress listener
       const unsubscribe = ipc.onGenerationProgress((progress) => {
+        console.log('Frontend: Received progress update:', progress)
         addProgress(progress)
       })
 
       // Generate the project
+      console.log('Frontend: Calling generate project...')
       const result = await ipc.generateProject(idea)
+      console.log('Frontend: Generation result:', result)
 
-      if (result.success) {
+      if (result.success && result.data?.projectId) {
+        console.log('Frontend: Project generated successfully')
         toast.success('Project generated successfully!')
-        selectProject(projectId)
-        setCurrentTab('prd')
+        
+        // Update projects list if provided
+        if (result.data.projects) {
+          console.log('Frontend: Updating projects list:', result.data.projects.length, 'projects')
+          setProjects(result.data.projects)
+        }
+        
+        // Small delay to ensure files are written
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        // Load the new project data
+        console.log('Frontend: Loading project data for:', result.data.projectId)
+        const projectData = await ipc.loadProject(result.data.projectId)
+        console.log('Frontend: Project data loaded:', projectData ? 'success' : 'failed')
+        
+        if (projectData) {
+          setProjectData(projectData)
+          selectProject(result.data.projectId)
+          setCurrentTab('prd')
+          
+          // Clear the idea input for new projects
+          if (isNewProject) {
+            setIdea('')
+          }
+        } else {
+          toast.error('Failed to load generated project data')
+        }
       } else {
+        console.log('Frontend: Generation failed:', result.error)
         toast.error(result.error || 'Failed to generate project')
       }
 
@@ -88,26 +137,32 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
             ) : (
               <>
                 <Sparkles className="w-5 h-5" />
-                Generate PRD
+                {currentProjectData?.prd ? 'Regenerate PRD' : 'Generate PRD'}
               </>
             )}
           </button>
         </div>
 
         {/* Progress Display */}
-        {isGenerating && (
+        {(isGenerating || generationProgress.length > 0) && (
           <div className="mt-8 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
             <h3 className="font-semibold mb-2">Generation Progress</h3>
-            <div className="space-y-2">
-              {useStore.getState().generationProgress.map((progress, index) => (
-                <div key={index} className="flex items-center gap-2 text-sm">
-                  {progress.status === 'in-progress' && <Loader2 className="w-4 h-4 animate-spin" />}
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600">
+              {generationProgress.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">Starting generation...</p>
+              ) : (
+                generationProgress.map((progress, index) => (
+                <div key={`${progress.node}-${index}`} className="flex items-center gap-2 text-sm py-1">
+                  {progress.status === 'in-progress' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
                   {progress.status === 'success' && <span className="text-green-600">✓</span>}
                   {progress.status === 'error' && <span className="text-red-600">✗</span>}
-                  <span>{progress.node}</span>
-                  {progress.message && <span className="text-gray-500">- {progress.message}</span>}
-                </div>
-              ))}
+                  <span className={progress.status === 'success' ? 'text-gray-600 dark:text-gray-400' : ''}>
+                    {progress.node}
+                  </span>
+                  {progress.message && <span className="text-gray-500 dark:text-gray-400">- {progress.message}</span>}
+                                  </div>
+                ))
+              )}
             </div>
           </div>
         )}

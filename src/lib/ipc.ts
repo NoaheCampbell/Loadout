@@ -16,8 +16,16 @@ export const ipc = {
     return window.ipcRenderer.invoke(IPC_CHANNELS.LOAD_PROJECT, projectId);
   },
 
+  async deleteProject(projectId: string): Promise<{ success: boolean; error?: string; projects?: Project[] }> {
+    return window.ipcRenderer.invoke(IPC_CHANNELS.DELETE_PROJECT, projectId);
+  },
+
   // Generation operations
-  async generateProject(idea: string): Promise<{ success: boolean; error?: string; data?: any }> {
+  async generateProject(idea: string): Promise<{ 
+    success: boolean; 
+    error?: string; 
+    data?: { projectId: string; projects?: Project[] } 
+  }> {
     return window.ipcRenderer.invoke(IPC_CHANNELS.GENERATE_PROJECT, idea);
   },
 

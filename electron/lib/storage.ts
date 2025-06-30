@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import fs from 'fs/promises';
 import path from 'path';
+import { nanoid } from 'nanoid';
 import { Project, ProjectFiles } from '../../src/types';
 
 export class StorageManager {
@@ -49,6 +50,12 @@ export class StorageManager {
     if (files.brainlift) {
       await fs.writeFile(path.join(projectPath, 'brainlift.md'), this.brainliftToMarkdown(files.brainlift));
     }
+    if (files.uiPlan) {
+      await fs.writeFile(path.join(projectPath, 'ui_plan.json'), JSON.stringify(files.uiPlan, null, 2));
+    }
+    if (files.uiStrategy) {
+      await fs.writeFile(path.join(projectPath, 'ui_strategy.txt'), files.uiStrategy);
+    }
     if (files.uiCode) {
       await fs.writeFile(path.join(projectPath, 'ui.tsx'), files.uiCode);
     }
@@ -80,31 +87,96 @@ export class StorageManager {
   async loadProject(projectId: string): Promise<ProjectFiles | null> {
     try {
       const projectPath = path.join(this.projectsPath, projectId);
+      console.log('Storage: Loading project from:', projectPath);
       
       const files: Partial<ProjectFiles> = {};
 
       // Load files that exist
       try {
         files.idea = await fs.readFile(path.join(projectPath, 'idea.txt'), 'utf-8');
-      } catch {}
+      } catch (e) {
+        console.log('Storage: Failed to load idea.txt:', e instanceof Error ? e.message : String(e));
+      }
       
       try {
         const prdContent = await fs.readFile(path.join(projectPath, 'prd.md'), 'utf-8');
         files.prd = this.parsePrdFromMarkdown(prdContent);
-      } catch {}
+      } catch (e) {
+        console.log('Storage: Failed to load prd.md:', e instanceof Error ? e.message : String(e));
+      }
 
       try {
         const checklistContent = await fs.readFile(path.join(projectPath, 'checklist.md'), 'utf-8');
         files.checklist = this.parseChecklistFromMarkdown(checklistContent);
-      } catch {}
+      } catch (e) {
+        console.log('Storage: Failed to load checklist.md:', e instanceof Error ? e.message : String(e));
+      }
 
       try {
         files.uiCode = await fs.readFile(path.join(projectPath, 'ui.tsx'), 'utf-8');
-      } catch {}
+      } catch (e) {
+        console.log('Storage: Failed to load ui.tsx:', e instanceof Error ? e.message : String(e));
+      }
+      
+      try {
+        const brainliftContent = await fs.readFile(path.join(projectPath, 'brainlift.md'), 'utf-8');
+        files.brainlift = { assumptions: [], decisions: [], contextLinks: [] }; // Simple parse for now
+      } catch (e) {
+        // Brainlift is optional
+      }
+      
+      try {
+        const v0PromptContent = await fs.readFile(path.join(projectPath, 'v0_prompt.json'), 'utf-8');
+        files.v0Prompt = JSON.parse(v0PromptContent);
+      } catch (e) {
+        // v0 prompt is optional
+      }
+      
+      try {
+        const uiPlanPath = path.join(projectPath, 'ui_plan.json');
+        const uiPlanContent = await fs.readFile(uiPlanPath, 'utf-8');
+        files.uiPlan = JSON.parse(uiPlanContent);
+      } catch (e) {
+        // For backward compatibility, create a basic UI plan
+        files.uiPlan = { components: [], layout: '', user_interactions: [] };
+      }
+      
+      // Try to load UI strategy
+      try {
+        const strategy = await fs.readFile(path.join(projectPath, 'ui_strategy.txt'), 'utf-8');
+        files.uiStrategy = strategy.trim() as 'v0' | 'gpt';
+      } catch (e) {
+        // Fallback: Determine UI strategy based on what files exist
+        if (files.uiCode) {
+          files.uiStrategy = 'gpt';
+        } else if (files.v0Prompt) {
+          files.uiStrategy = 'v0';
+        }
+      }
 
+      console.log('Storage: Loaded project files:', Object.keys(files));
       return files as ProjectFiles;
-    } catch {
+    } catch (error) {
+      console.error('Storage: Failed to load project:', error);
       return null;
+    }
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    try {
+      // Delete the project directory
+      const projectPath = path.join(this.projectsPath, projectId);
+      await fs.rm(projectPath, { recursive: true, force: true });
+      
+      // Update the index
+      const projects = await this.listProjects();
+      const updatedProjects = projects.filter(p => p.id !== projectId);
+      await fs.writeFile(this.indexPath, JSON.stringify(updatedProjects, null, 2));
+      
+      console.log('Storage: Deleted project:', projectId);
+    } catch (error) {
+      console.error('Storage: Failed to delete project:', error);
+      throw error;
     }
   }
 
@@ -147,19 +219,60 @@ ${brainlift.contextLinks.map((l: string) => `- ${l}`).join('\n')}`;
   }
 
   private parsePrdFromMarkdown(content: string): any {
-    // Simple parser - in production, use a proper markdown parser
-    return {
-      problem: 'Parsed from markdown',
+    // Parse the PRD from markdown
+    const prd: any = {
+      problem: '',
       goals: [],
       scope: '',
       constraints: [],
       success_criteria: []
     };
+
+    const sections = content.split(/^##\s+/m);
+    
+    sections.forEach(section => {
+      const lines = section.trim().split('\n');
+      const title = lines[0]?.toLowerCase();
+      
+      if (title?.includes('problem')) {
+        prd.problem = lines.slice(1).join('\n').trim();
+      } else if (title?.includes('goals')) {
+        prd.goals = lines.slice(1)
+          .filter(line => line.trim().startsWith('-'))
+          .map(line => line.trim().substring(1).trim());
+      } else if (title?.includes('scope')) {
+        prd.scope = lines.slice(1).join('\n').trim();
+      } else if (title?.includes('constraints')) {
+        prd.constraints = lines.slice(1)
+          .filter(line => line.trim().startsWith('-'))
+          .map(line => line.trim().substring(1).trim());
+      } else if (title?.includes('success criteria')) {
+        prd.success_criteria = lines.slice(1)
+          .filter(line => line.trim().startsWith('-'))
+          .map(line => line.trim().substring(1).trim());
+      }
+    });
+
+    return prd;
   }
 
   private parseChecklistFromMarkdown(content: string): any[] {
-    // Simple parser
-    return [];
+    // Parse checklist items from markdown
+    const lines = content.split('\n');
+    const items: any[] = [];
+    
+    lines.forEach(line => {
+      const match = line.match(/^-\s*\[([ x])\]\s*(.+)$/);
+      if (match) {
+        items.push({
+          id: nanoid(),
+          done: match[1] === 'x',
+          text: match[2].trim()
+        });
+      }
+    });
+    
+    return items;
   }
 }
 

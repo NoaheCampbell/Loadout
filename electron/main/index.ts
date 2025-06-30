@@ -128,6 +128,7 @@ ipcMain.handle('open-win', (_, arg) => {
 // FlowGenius IPC Handlers
 import { IPC_CHANNELS } from '../lib/ipc-channels'
 import { storage } from '../lib/storage'
+import { runWorkflow } from '../lib/workflow'
 
 // Storage handlers
 ipcMain.handle(IPC_CHANNELS.ENSURE_STORAGE, async () => {
@@ -142,15 +143,45 @@ ipcMain.handle(IPC_CHANNELS.LOAD_PROJECT, async (_, projectId: string) => {
   return await storage.loadProject(projectId)
 })
 
-// Placeholder for generate project - will implement with LangGraph
+ipcMain.handle(IPC_CHANNELS.DELETE_PROJECT, async (_, projectId: string) => {
+  try {
+    await storage.deleteProject(projectId)
+    const projects = await storage.listProjects()
+    return { success: true, projects }
+  } catch (error) {
+    console.error('Failed to delete project:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to delete project' }
+  }
+})
+
+// Generate project using workflow
 ipcMain.handle(IPC_CHANNELS.GENERATE_PROJECT, async (event, idea: string) => {
-  // Send progress updates
-  event.sender.send(IPC_CHANNELS.GENERATION_PROGRESS, {
-    node: 'IdeaInputNode',
-    status: 'in-progress',
-    message: 'Processing your idea...'
-  })
-  
-  // TODO: Implement LangGraph workflow
-  return { success: false, error: 'LangGraph not yet implemented' }
+  console.log('IPC: Generate project requested with idea:', idea.substring(0, 50) + '...')
+  try {
+    const result = await runWorkflow(idea, (node, status, message) => {
+      console.log('IPC: Progress update -', node, status, message || '')
+      // Send progress updates to renderer
+      event.sender.send(IPC_CHANNELS.GENERATION_PROGRESS, {
+        node,
+        status,
+        message
+      })
+    })
+    
+    if (result.success && result.projectId) {
+      // Reload projects list
+      const projects = await storage.listProjects()
+      console.log('IPC: Project generation successful, returning:', { projectId: result.projectId, projectCount: projects.length })
+      return { success: true, data: { projectId: result.projectId, projects } }
+    } else {
+      console.log('IPC: Project generation failed:', result.error)
+      return { success: false, error: result.error || 'Unknown error' }
+    }
+  } catch (error) {
+    console.error('Project generation error:', error)
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to generate project' 
+    }
+  }
 })

@@ -30,8 +30,9 @@ export default function Workspace() {
       <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="px-6 py-4">
           <h2 className="text-xl font-semibold">
-            {currentProjectData?.prd?.problem ? 
-              currentProjectData.idea.split('\n')[0].slice(0, 50) + '...' : 
+            {currentProjectData?.idea ? 
+              currentProjectData.idea.split('\n')[0].slice(0, 50) + 
+              (currentProjectData.idea.split('\n')[0].length > 50 ? '...' : '') : 
               'New Project'}
           </h2>
         </div>

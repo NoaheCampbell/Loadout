@@ -86,3 +86,158 @@ code {
     background-color: #f9f9f9;
   }
 }
+
+/* Code Editor Styles */
+.prism-code {
+  background: transparent !important;
+}
+
+/* Light theme for Prism */
+pre[class*="language-"],
+code[class*="language-"] {
+  color: #2e3440;
+  background: transparent;
+}
+
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #616e88;
+}
+
+.token.punctuation {
+  color: #2e3440;
+}
+
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: #b48ead;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #a3be8c;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: #81a1c1;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #5e81ac;
+}
+
+.token.function,
+.token.class-name {
+  color: #88c0d0;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: #d08770;
+}
+
+/* Dark theme for Prism - Higher contrast */
+.dark pre[class*="language-"],
+.dark code[class*="language-"] {
+  color: #e5e9f0;
+  background: transparent;
+}
+
+.dark .token.comment,
+.dark .token.prolog,
+.dark .token.doctype,
+.dark .token.cdata {
+  color: #7b88a1;
+}
+
+.dark .token.punctuation {
+  color: #eceff4;
+}
+
+.dark .token.property,
+.dark .token.tag,
+.dark .token.boolean,
+.dark .token.number,
+.dark .token.constant,
+.dark .token.symbol,
+.dark .token.deleted {
+  color: #d57bff;
+}
+
+.dark .token.selector,
+.dark .token.attr-name,
+.dark .token.string,
+.dark .token.char,
+.dark .token.builtin,
+.dark .token.inserted {
+  color: #a3ff57;
+}
+
+.dark .token.operator,
+.dark .token.entity,
+.dark .token.url,
+.dark .language-css .token.string,
+.dark .style .token.string {
+  color: #88c0d0;
+}
+
+.dark .token.atrule,
+.dark .token.attr-value,
+.dark .token.keyword {
+  color: #7aa2f7;
+}
+
+.dark .token.function,
+.dark .token.class-name {
+  color: #7dcfff;
+}
+
+.dark .token.regex,
+.dark .token.important,
+.dark .token.variable {
+  color: #ff9e64;
+}
+
+/* Custom scrollbar for code editor */
+.dark .overflow-auto::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.dark .overflow-auto::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+.dark .overflow-auto::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 6px;
+}
+
+.dark .overflow-auto::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* Fix for code editor textarea */
+textarea[disabled] {
+  -webkit-text-fill-color: currentColor !important;
+  opacity: 1 !important;
+  cursor: text !important;
+}
