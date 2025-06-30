@@ -238,33 +238,115 @@ Format as JSON with sections for:
 // Generate UI code
 async function generateUICode(projectIdea: ProjectIdea, uiPlan: UIPlan): Promise<string> {
   const prompt = `
-Create a React component with Tailwind CSS based on this UI plan:
+Create a fully functional React component with Tailwind CSS that actually implements the project concept:
 
 Project: ${projectIdea.title}
 Components needed: ${uiPlan.components.join(', ')}
 Layout: ${uiPlan.layout}
 Interactions: ${uiPlan.user_interactions.join(', ')}
 
-Requirements:
-- Use React functional components with hooks
-- Style with Tailwind CSS classes
-- Include mock data for display
-- Make it responsive
-- Use lucide-react for icons
+IMPORTANT: Create a REALISTIC, FUNCTIONAL interface that users would actually want to use for "${projectIdea.title}". Include:
+1. Rich, meaningful content (not just placeholder text)
+2. Multiple interactive elements that demonstrate the app's purpose
+3. Realistic data/examples that show what the app does
+4. Proper visual hierarchy and modern design
+5. All components should serve the project's core functionality
 
-IMPORTANT: Return ONLY the React component code. Do not include any markdown formatting, backticks, or explanatory text. Start directly with 'import' statements and end with 'export default'.
+CRITICAL LAYOUT REQUIREMENTS:
+1. Use flexbox or grid for layouts - avoid absolute/fixed positioning unless necessary
+2. If using fixed/absolute positioning, ensure components don't overlap:
+   - Navigation: top of screen
+   - Sidebars: left or right side
+   - Modals/overlays: hidden by default with state management
+   - Floating buttons: use specific corners with proper spacing
+3. All modals, popups, and overlays MUST be conditionally rendered with state (default: hidden)
+4. Use proper z-index layering when needed
+5. Ensure responsive design with proper mobile layouts
+
+Technical Requirements:
+- Use React functional components with hooks for state management
+- Use React.createElement() for ALL elements - NO JSX SYNTAX
+- Style with Tailwind CSS classes in className props
+- Include mock data for display
+- NO imports - React will be available globally
+- End with: window.App = YourMainComponent;
+
+EXAMPLE - Newsletter Editor with rich content and functionality:
+const App = () => {
+  const [activeTab, setActiveTab] = React.useState('content');
+  const [showPreview, setShowPreview] = React.useState(false);
+  
+  return React.createElement('div', { className: 'min-h-screen flex flex-col bg-gray-50' },
+    // Header with project branding and actions
+    React.createElement('header', { className: 'bg-white border-b px-6 py-4 flex justify-between items-center' },
+      React.createElement('h1', { className: 'text-2xl font-bold text-gray-900' }, 'Newsletter Editor Pro'),
+      React.createElement('div', { className: 'flex gap-3' },
+        React.createElement('button', { 
+          className: 'px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700',
+          onClick: () => setShowPreview(!showPreview)
+        }, showPreview ? 'Edit' : 'Preview'),
+        React.createElement('button', { className: 'px-4 py-2 bg-green-600 text-white rounded-lg' }, 'Send Newsletter')
+      )
+    ),
+    // Main content with tabs and editor
+    React.createElement('main', { className: 'flex-1 flex' },
+      React.createElement('div', { className: 'flex-1 p-6' },
+        // Tab navigation
+        React.createElement('div', { className: 'flex gap-1 mb-6 border-b' },
+          ['content', 'design', 'recipients'].map(tab =>
+            React.createElement('button', {
+              key: tab,
+              className: 'px-4 py-2 capitalize ' + (activeTab === tab ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'),
+              onClick: () => setActiveTab(tab)
+            }, tab)
+          )
+        ),
+        // Content area based on active tab
+        React.createElement('div', { className: 'bg-white rounded-lg p-6 shadow-sm' },
+          activeTab === 'content' ? 'Newsletter content editor here...' : 
+          activeTab === 'design' ? 'Design customization options...' :
+          'Recipient management...'
+        )
+      )
+    )
+  );
+};
+
+window.App = App;
+
+IMPORTANT: Return ONLY the React component code using React.createElement. NO JSX, NO angle brackets like <div>.
 `
 
   const response = await codeLLM.invoke([
-    new SystemMessage(`You are a code generator that outputs ONLY executable React component code.
-Rules:
-1. Start with import statements
-2. End with export default statement
+    new SystemMessage(`You are an expert UI developer creating production-ready React components.
+
+QUALITY REQUIREMENTS:
+1. Create interfaces that look professional and modern
+2. Include realistic content, data, and examples (not just "Content here...")
+3. Implement actual functionality that demonstrates the app's purpose
+4. Use proper visual hierarchy with headers, sections, cards, etc.
+5. Add multiple interactive elements that make sense for the project
+6. DON'T show raw state values in the UI (like "false" or "true")
+7. Make components that users would actually want to use
+
+LAYOUT RULES:
+1. Use flexbox/grid layouts - avoid overlapping components
+2. Navigation bars: use sticky/fixed top-0 with proper z-index
+3. Sidebars: use flex layouts, not absolute positioning
+4. Modals/overlays: MUST be hidden by default with useState(false)
+5. Floating buttons: position in corners with margin, avoid overlap
+6. NO multiple components with same fixed position (e.g., multiple fixed right-0 top-0)
+
+CODE RULES:
+1. Use React.createElement() for ALL elements - NO JSX syntax allowed
+2. NO import statements - React is globally available
 3. NO markdown code blocks (no \`\`\`)
 4. NO explanatory text before, after, or within the code
 5. NO comments about what the code does
-6. ONLY valid JavaScript/JSX that can run directly`),
-    new HumanMessage(prompt + '\n\nRemember: Output ONLY the code, nothing else.'),
+6. Use React.useState for state management when needed
+7. End with: window.App = YourMainComponentName;
+8. ONLY valid JavaScript that can run directly`),
+    new HumanMessage(prompt + '\n\nCRITICAL: Create a RICH, FUNCTIONAL interface that truly represents what this app would look like in production. Include sample data, multiple features, and realistic interactions. NO placeholder text like "Content here" - make it look like a real app!\n\nRemember: Output ONLY the code using React.createElement, NO JSX. Avoid overlapping components!'),
   ])
 
   let code = response.content as string
@@ -274,33 +356,48 @@ Rules:
   code = code.replace(/```(?:jsx?|javascript|typescript|tsx?)?\n?/g, '')
   code = code.replace(/```\n?/g, '')
   
-  // Extract code between first import and last export/closing brace
-  const importMatch = code.match(/import[\s\S]*/)
-  if (importMatch) {
-    code = importMatch[0]
+  // Remove any leading/trailing non-code text
+  const firstConstOrFunction = code.search(/(?:const|function)\s+\w+/)
+  if (firstConstOrFunction > 0) {
+    code = code.substring(firstConstOrFunction)
   }
   
-  // Remove any trailing non-code text after the last }
-  const lastBraceIndex = code.lastIndexOf('}')
-  if (lastBraceIndex !== -1) {
-    // Look for 'export default' after the last brace to ensure we keep it
-    const exportMatch = code.substring(lastBraceIndex).match(/}\s*(export\s+default[^;]+;?)/)
-    if (exportMatch) {
-      code = code.substring(0, lastBraceIndex) + exportMatch[0]
+      // Find the last 'window.App = ' assignment or 'const App = ' assignment
+    const windowAppMatch = code.match(/window\.App\s*=\s*\w+\s*;?\s*$/m)
+    const appAssignmentMatch = code.match(/const\s+App\s*=\s*\w+\s*;?\s*$/m)
+    
+    if (windowAppMatch) {
+      const endIndex = code.lastIndexOf(windowAppMatch[0]) + windowAppMatch[0].length
+      code = code.substring(0, endIndex)
+    } else if (appAssignmentMatch) {
+      // Found App assignment but might need to add window.App
+      const endIndex = code.lastIndexOf(appAssignmentMatch[0]) + appAssignmentMatch[0].length
+      code = code.substring(0, endIndex)
     } else {
-      code = code.substring(0, lastBraceIndex + 1)
+      // If no App assignment, look for the last closing brace
+      const lastBraceIndex = code.lastIndexOf('}')
+      if (lastBraceIndex !== -1) {
+        code = code.substring(0, lastBraceIndex + 1)
+        // Try to find the main component and add App assignment
+        const componentMatch = code.match(/(?:function|const)\s+(\w+)\s*(?:\(|=)/)
+        if (componentMatch) {
+          code += `\n\nconst App = ${componentMatch[1]};`
+        }
+      }
     }
-  }
   
-  // Ensure the code ends properly
-  code = code.trim()
-  if (!code.includes('export default')) {
-    // Try to find the component name and add export
-    const componentMatch = code.match(/(?:function|const)\s+(\w+)\s*(?:\(|=)/)
-    if (componentMatch) {
-      code += `\n\nexport default ${componentMatch[1]};`
+      // Ensure the code ends with App assignment and makes it global
+    code = code.trim()
+    if (!code.includes('const App =')) {
+      // Try to find the main component name and add assignment
+      const componentMatch = code.match(/(?:function|const)\s+(\w+)\s*(?:\(|=)/)
+      if (componentMatch) {
+        code += `\n\nconst App = ${componentMatch[1]};\nwindow.App = App;`
+      }
+    } else if (!code.includes('window.App')) {
+      // App is defined but not made global
+      code += '\nwindow.App = App;'
     }
-  }
   
   console.log('UI code cleaned, length:', code.length)
   return code
