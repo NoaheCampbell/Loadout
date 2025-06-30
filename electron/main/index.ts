@@ -61,6 +61,24 @@ async function createWindow() {
     },
   })
 
+  // Configure CSP to allow loading scripts from CDNs for UI preview
+  win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com https://unpkg.com/@babel/standalone/; " +
+          "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; " +
+          "font-src 'self' data:; " +
+          "img-src 'self' data: https:; " +
+          "connect-src 'self' https://unpkg.com https://cdn.tailwindcss.com; " +
+          "frame-src 'self' data:;"
+        ]
+      }
+    })
+  })
+
   if (VITE_DEV_SERVER_URL) { // #298
     win.loadURL(VITE_DEV_SERVER_URL)
     // Open devTool if the app is not packaged
