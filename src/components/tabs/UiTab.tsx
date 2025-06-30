@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Copy, Code2, Eye, AlertCircle, RefreshCw } from 'lucide-react'
 import { useStore } from '../../store'
 import toast from 'react-hot-toast'
@@ -160,6 +160,55 @@ function convertToStaticHTML(code: string): string {
 </html>
     `
   }
+}
+
+// Component to handle iframe with blob URL
+function PreviewIframe({ 
+  code, 
+  mode, 
+  refreshKey,
+  convertToStaticHTML,
+  createInteractivePreview 
+}: {
+  code: string
+  mode: 'static' | 'interactive'
+  refreshKey: number
+  convertToStaticHTML: (code: string) => string
+  createInteractivePreview: (code: string) => string
+}) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  
+  useEffect(() => {
+    const htmlContent = mode === 'static' 
+      ? convertToStaticHTML(code)
+      : createInteractivePreview(code)
+    
+    // Create blob URL
+    const blob = new Blob([htmlContent], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    setBlobUrl(url)
+    
+    // Cleanup
+    return () => {
+      URL.revokeObjectURL(url)
+    }
+  }, [code, mode, refreshKey, convertToStaticHTML, createInteractivePreview])
+  
+  if (!blobUrl) {
+    return <div className="flex items-center justify-center h-full">Loading preview...</div>
+  }
+  
+  return (
+    <iframe
+      src={blobUrl}
+      className="w-full border-0 bg-white"
+      style={{ 
+        height: '900px',
+        display: 'block'
+      }}
+      title="UI Preview"
+    />
+  )
 }
 
 export default function UiTab() {
@@ -842,6 +891,16 @@ export default App;`;
     if (!code) return ''
     
     try {
+      // For interactive preview, let's use the same static HTML approach
+      // but with enhanced CSS for better interactivity
+      const staticHtml = convertToStaticHTML(code)
+      
+      // Extract the body content from static HTML
+      const bodyMatch = staticHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+      if (!bodyMatch) return staticHtml
+      
+      const bodyContent = bodyMatch[1]
+      
       return `
 <!DOCTYPE html>
 <html>
@@ -849,85 +908,252 @@ export default App;`;
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
+    /* Reset and base styles */
+    * { box-sizing: border-box; }
     body { 
       margin: 0; 
       font-family: system-ui, -apple-system, sans-serif;
-      display: flex;
+      font-size: 16px;
+      line-height: 1.5;
+      color: #1f2937;
+    }
+    
+    /* Layout utilities */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .flex-1 { flex: 1; }
+    .items-center { align-items: center; }
+    .items-start { align-items: flex-start; }
+    .justify-between { justify-content: space-between; }
+    .justify-around { justify-content: space-around; }
+    .justify-center { justify-content: center; }
+    
+    /* Spacing */
+    .gap-1 { gap: 0.25rem; }
+    .gap-2 { gap: 0.5rem; }
+    .gap-3 { gap: 0.75rem; }
+    .gap-4 { gap: 1rem; }
+    .gap-6 { gap: 1.5rem; }
+    .space-y-1 > * + * { margin-top: 0.25rem; }
+    .space-y-4 > * + * { margin-top: 1rem; }
+    .p-2 { padding: 0.5rem; }
+    .p-3 { padding: 0.75rem; }
+    .p-4 { padding: 1rem; }
+    .p-6 { padding: 1.5rem; }
+    .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+    .px-4 { padding-left: 1rem; padding-right: 1rem; }
+    .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+    .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+    .m-2 { margin: 0.5rem; }
+    .m-4 { margin: 1rem; }
+    .mb-1 { margin-bottom: 0.25rem; }
+    .mb-2 { margin-bottom: 0.5rem; }
+    .mb-4 { margin-bottom: 1rem; }
+    .mt-2 { margin-top: 0.5rem; }
+    .mt-4 { margin-top: 1rem; }
+    .mr-2 { margin-right: 0.5rem; }
+    .ml-auto { margin-left: auto; }
+    .mr-auto { margin-right: auto; }
+    
+    /* Typography */
+    .text-xs { font-size: 0.75rem; }
+    .text-sm { font-size: 0.875rem; }
+    .text-base { font-size: 1rem; }
+    .text-lg { font-size: 1.125rem; }
+    .text-xl { font-size: 1.25rem; }
+    .text-2xl { font-size: 1.5rem; }
+    .text-3xl { font-size: 1.875rem; }
+    .font-normal { font-weight: 400; }
+    .font-medium { font-weight: 500; }
+    .font-semibold { font-weight: 600; }
+    .font-bold { font-weight: 700; }
+    .text-center { text-align: center; }
+    .text-left { text-align: left; }
+    .text-right { text-align: right; }
+    
+    /* Colors */
+    .text-white { color: #ffffff; }
+    .text-gray-400 { color: #9ca3af; }
+    .text-gray-500 { color: #6b7280; }
+    .text-gray-600 { color: #4b5563; }
+    .text-gray-700 { color: #374151; }
+    .text-gray-800 { color: #1f2937; }
+    .text-gray-900 { color: #111827; }
+    .text-blue-500 { color: #3b82f6; }
+    .text-blue-600 { color: #2563eb; }
+    .text-blue-700 { color: #1d4ed8; }
+    .text-green-600 { color: #16a34a; }
+    .text-red-600 { color: #dc2626; }
+    
+    .bg-white { background-color: #ffffff; }
+    .bg-gray-50 { background-color: #f9fafb; }
+    .bg-gray-100 { background-color: #f3f4f6; }
+    .bg-gray-200 { background-color: #e5e7eb; }
+    .bg-gray-800 { background-color: #1f2937; }
+    .bg-gray-900 { background-color: #111827; }
+    .bg-blue-50 { background-color: #eff6ff; }
+    .bg-blue-100 { background-color: #dbeafe; }
+    .bg-blue-500 { background-color: #3b82f6; }
+    .bg-blue-600 { background-color: #2563eb; }
+    .bg-green-50 { background-color: #f0fdf4; }
+    .bg-green-100 { background-color: #dcfce7; }
+    .bg-green-500 { background-color: #10b981; }
+    .bg-red-50 { background-color: #fef2f2; }
+    .bg-red-100 { background-color: #fee2e2; }
+    
+    /* Borders */
+    .border { border: 1px solid #e5e7eb; }
+    .border-2 { border: 2px solid #e5e7eb; }
+    .border-b { border-bottom: 1px solid #e5e7eb; }
+    .border-t { border-top: 1px solid #e5e7eb; }
+    .border-gray-200 { border-color: #e5e7eb; }
+    .border-gray-300 { border-color: #d1d5db; }
+    .border-gray-800 { border-color: #1f2937; }
+    .rounded { border-radius: 0.25rem; }
+    .rounded-md { border-radius: 0.375rem; }
+    .rounded-lg { border-radius: 0.5rem; }
+    .rounded-xl { border-radius: 0.75rem; }
+    .rounded-full { border-radius: 9999px; }
+    
+    /* Shadows */
+    .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+    .shadow { box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); }
+    .shadow-md { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+    .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+    
+    /* Width/Height */
+    .w-full { width: 100%; }
+    .w-4 { width: 1rem; }
+    .w-5 { width: 1.25rem; }
+    .w-6 { width: 1.5rem; }
+    .w-8 { width: 2rem; }
+    .w-10 { width: 2.5rem; }
+    .w-12 { width: 3rem; }
+    .w-64 { width: 16rem; }
+    .h-4 { height: 1rem; }
+    .h-5 { height: 1.25rem; }
+    .h-6 { height: 1.5rem; }
+    .h-8 { height: 2rem; }
+    .h-10 { height: 2.5rem; }
+    .h-12 { height: 3rem; }
+    .h-full { height: 100%; }
+    .h-screen { height: 100vh; }
+    .min-h-screen { min-height: 100vh; }
+    
+    /* Position */
+    .relative { position: relative; }
+    .absolute { position: absolute; }
+    .fixed { position: fixed; }
+    .top-0 { top: 0; }
+    .bottom-0 { bottom: 0; }
+    .left-0 { left: 0; }
+    .right-0 { right: 0; }
+    
+    /* Display */
+    .block { display: block; }
+    .inline-block { display: inline-block; }
+    .hidden { display: none; }
+    .grid { display: grid; }
+    .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+    .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    
+    /* Overflow */
+    .overflow-hidden { overflow: hidden; }
+    .overflow-auto { overflow: auto; }
+    .overflow-y-auto { overflow-y: auto; }
+    .overflow-x-auto { overflow-x: auto; }
+    
+    /* Cursor */
+    .cursor-pointer { cursor: pointer; }
+    
+    /* Enhanced hover states with transitions */
+    .hover\\:bg-gray-50:hover { background-color: #f9fafb; }
+    .hover\\:bg-gray-100:hover { background-color: #f3f4f6; }
+    .hover\\:bg-gray-200:hover { background-color: #e5e7eb; }
+    .hover\\:bg-gray-800:hover { background-color: #374151; }
+    .hover\\:bg-blue-600:hover { background-color: #2563eb; }
+    .hover\\:text-gray-700:hover { color: #374151; }
+    .hover\\:text-gray-900:hover { color: #111827; }
+    .hover\\:text-white:hover { color: #ffffff; }
+    .hover\\:shadow-lg:hover { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+    
+    /* Transitions */
+    .transition { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    .transition-colors { transition-property: background-color, border-color, color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    
+    /* Add transitions to all interactive elements */
+    [class*="hover\\:"]:not([class*="transition"]) {
+      transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    /* Interactive enhancements */
+    .cursor-pointer:hover {
+      transform: translateY(-1px);
+    }
+    
+    .cursor-pointer:active {
+      transform: translateY(0);
+    }
+    
+    /* Custom styles for common patterns */
+    button, [role="button"] {
+      cursor: pointer;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
-      background: #f3f4f6;
-    }
-    .container {
-      background: white;
-      padding: 2rem;
-      border-radius: 0.5rem;
-      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-      max-width: 600px;
-      width: 100%;
-    }
-    h2 { color: #1f2937; margin-top: 0; }
-    p { color: #6b7280; line-height: 1.6; }
-    .note { 
-      background: #fef3c7; 
-      border: 1px solid #f59e0b; 
-      padding: 1rem; 
-      border-radius: 0.375rem; 
-      margin-top: 1.5rem;
-    }
-    .note h3 { margin: 0 0 0.5rem 0; color: #92400e; font-size: 1rem; }
-    .note p { margin: 0; color: #92400e; font-size: 0.875rem; }
-    code {
-      background: #f3f4f6;
-      padding: 0.125rem 0.25rem;
-      border-radius: 0.25rem;
-      font-size: 0.875rem;
-    }
-    .button {
-      display: inline-block;
-      margin-top: 1rem;
-      padding: 0.5rem 1rem;
-      background: #3b82f6;
-      color: white;
       border-radius: 0.375rem;
-      text-decoration: none;
-      font-size: 0.875rem;
+      padding: 0.5rem 1rem;
+      font-weight: 500;
+      transition: all 150ms;
     }
-    .button:hover {
-      background: #2563eb;
+    
+    button:hover { opacity: 0.9; }
+    button:active { transform: scale(0.98); }
+    
+    svg {
+      display: inline-block;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    
+    input { 
+      font-family: inherit; 
+      font-size: inherit; 
+      transition: all 150ms;
+    }
+    
+    input:focus {
+      outline: 2px solid #3b82f6;
+      outline-offset: 2px;
+    }
+    
+    .outline-none { outline: none; }
+    
+    /* Fixed bottom nav handling */
+    .fixed.bottom-0 {
+      background-color: white;
+      border-top: 1px solid #e5e7eb;
+      box-shadow: 0 -1px 3px 0 rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Responsive */
+    @media (max-width: 640px) {
+      .grid-cols-2 { grid-template-columns: 1fr; }
+      .grid-cols-3 { grid-template-columns: 1fr; }
+      .grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
 </head>
-  <body>
-    <div class="container">
-      <h2>Interactive Preview Requires Configuration</h2>
-      <p>The interactive React preview is blocked by Electron's Content Security Policy.</p>
-      
-      <div class="note">
-        <h3>Quick Solutions:</h3>
-        <p><strong>1. Use Static Preview Mode</strong> - Switch to "Static" mode for a styled HTML preview</p>
-        <p><strong>2. Copy & Run Locally</strong> - Use the "Copy Code" button and paste into your React environment</p>
-        <p><strong>3. Fix CSP (Advanced)</strong> - Update electron/main/index.ts to disable CSP for development</p>
-      </div>
-      
-      <details style="margin-top: 1.5rem;">
-        <summary style="cursor: pointer; color: #2563eb;">Show CSP Fix Instructions</summary>
-        <div style="margin-top: 1rem; padding: 1rem; background: #f3f4f6; border-radius: 0.375rem;">
-          <p style="margin: 0 0 0.5rem 0; font-weight: 600;">In electron/main/index.ts, replace the CSP configuration with:</p>
-          <pre style="background: white; padding: 1rem; border-radius: 0.25rem; overflow-x: auto; font-size: 0.875rem;">
-win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-  callback({
-    responseHeaders: {
-      ...details.responseHeaders,
-      'Content-Security-Policy': ['default-src * \'unsafe-inline\' \'unsafe-eval\' data: blob:;']
-    }
-  })
-})</pre>
-          <p style="margin: 1rem 0 0 0; font-size: 0.875rem; color: #6b7280;">Then restart the app completely.</p>
-        </div>
-      </details>
-    </div>
-  </body>
+<body>
+  <div style="background: #e0f2fe; border-bottom: 1px solid #3b82f6; padding: 0.5rem 1rem; font-size: 0.75rem; color: #1e40af;">
+    <strong>Interactive Preview</strong> - Enhanced CSS with hover states and transitions
+  </div>
+  ${bodyContent}
+</body>
 </html>
       `.trim()
     } catch (error) {
@@ -944,7 +1170,7 @@ win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
 <body>
   <div class="error">
     <h3>Preview Error</h3>
-    <p>Could not generate preview: ${error instanceof Error ? error.message : 'Unknown error'}</p>
+    <p>Could not generate interactive preview: ${error instanceof Error ? error.message : 'Unknown error'}</p>
   </div>
 </body>
 </html>
@@ -1090,24 +1316,13 @@ win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
                 ) : (
                   <div className="flex flex-col">
                     <div className="relative bg-gray-50" style={{ height: '900px' }}>
-                      {(() => {
-                        const htmlContent = previewMode === 'static' 
-                          ? convertToStaticHTML(processedCode)
-                          : createInteractivePreview(processedCode);
-                        const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`;
-                        return (
-                          <iframe
-                            key={`${refreshKey}-${previewMode}`}
-                            src={dataUrl}
-                            className="w-full border-0 bg-white"
-                            style={{ 
-                              height: '900px',
-                              display: 'block'
-                            }}
-                            title="UI Preview"
-                          />
-                        );
-                      })()}
+                      <PreviewIframe 
+                        code={processedCode}
+                        mode={previewMode}
+                        refreshKey={refreshKey}
+                        convertToStaticHTML={convertToStaticHTML}
+                        createInteractivePreview={createInteractivePreview}
+                      />
                       {/* Refresh button */}
                       <button
                         onClick={() => {

@@ -63,16 +63,28 @@ async function createWindow() {
 
   // Configure CSP to allow loading scripts from CDNs for UI preview
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    // For development, use a very permissive CSP
+    const isDev = VITE_DEV_SERVER_URL !== undefined
+    
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': [
+        'Content-Security-Policy': isDev ? [
+          // Very permissive CSP for development
+          "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+          "script-src * 'unsafe-inline' 'unsafe-eval'; " +
+          "connect-src *; " +
+          "img-src * data: blob:; " +
+          "frame-src * data: blob:; " +
+          "style-src * 'unsafe-inline';"
+        ] : [
+          // More restrictive CSP for production
           "default-src 'self'; " +
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com https://unpkg.com/@babel/standalone/; " +
-          "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+          "style-src 'self' 'unsafe-inline'; " +
           "font-src 'self' data:; " +
           "img-src 'self' data: https:; " +
-          "connect-src 'self' https://unpkg.com https://cdn.tailwindcss.com; " +
+          "connect-src 'self'; " +
           "frame-src 'self' data:;"
         ]
       }
