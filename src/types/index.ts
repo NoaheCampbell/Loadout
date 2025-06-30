@@ -54,6 +54,13 @@ export interface V0Prompt {
   }>;
 }
 
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
 export interface ProjectFiles {
   idea: string;
   prd: PRD;
@@ -63,4 +70,5 @@ export interface ProjectFiles {
   uiStrategy: UIStrategy;
   v0Prompt?: V0Prompt;
   uiCode?: string;
+  chatHistory?: ChatMessage[];
 } 

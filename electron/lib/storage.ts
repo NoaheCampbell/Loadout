@@ -62,6 +62,9 @@ export class StorageManager {
     if (files.v0Prompt) {
       await fs.writeFile(path.join(projectPath, 'v0_prompt.json'), JSON.stringify(files.v0Prompt, null, 2));
     }
+    if (files.chatHistory) {
+      await fs.writeFile(path.join(projectPath, 'chat_history.json'), JSON.stringify(files.chatHistory, null, 2));
+    }
 
     // Update index
     const projects = await this.listProjects();
@@ -152,6 +155,14 @@ export class StorageManager {
         } else if (files.v0Prompt) {
           files.uiStrategy = 'v0';
         }
+      }
+      
+      // Try to load chat history
+      try {
+        const chatHistoryContent = await fs.readFile(path.join(projectPath, 'chat_history.json'), 'utf-8');
+        files.chatHistory = JSON.parse(chatHistoryContent);
+      } catch (e) {
+        // Chat history is optional
       }
 
       console.log('Storage: Loaded project files:', Object.keys(files));

@@ -1,5 +1,5 @@
 import { IPC_CHANNELS } from '../../electron/lib/ipc-channels';
-import { Project, ProjectFiles, GenerationProgress } from '../types';
+import { Project, ProjectFiles, GenerationProgress, ChatMessage } from '../types';
 
 // Type-safe IPC communication layer
 export const ipc = {
@@ -21,16 +21,21 @@ export const ipc = {
   },
 
   // Generation operations
-  async generateProject(idea: string): Promise<{ 
+  async generateProject(idea: string, chatHistory?: ChatMessage[]): Promise<{ 
     success: boolean; 
     error?: string; 
     data?: { projectId: string; projects?: Project[] } 
   }> {
-    return window.ipcRenderer.invoke(IPC_CHANNELS.GENERATE_PROJECT, idea);
+    return window.ipcRenderer.invoke(IPC_CHANNELS.GENERATE_PROJECT, { idea, chatHistory });
   },
 
   async cancelGeneration(): Promise<void> {
     return window.ipcRenderer.invoke(IPC_CHANNELS.CANCEL_GENERATION);
+  },
+
+  // Chat operations
+  async invoke(channel: string, data?: any): Promise<any> {
+    return window.ipcRenderer.invoke(channel, data);
   },
 
   // Event listeners
@@ -42,6 +47,17 @@ export const ipc = {
     // Return cleanup function
     return () => {
       window.ipcRenderer.removeAllListeners(IPC_CHANNELS.GENERATION_PROGRESS);
+    };
+  },
+
+  on(channel: string, callback: (data: any) => void) {
+    window.ipcRenderer.on(channel, (_, data) => {
+      callback(data);
+    });
+
+    // Return cleanup function
+    return () => {
+      window.ipcRenderer.removeAllListeners(channel);
     };
   },
 }; 

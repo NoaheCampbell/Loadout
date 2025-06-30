@@ -10,6 +10,13 @@ export const IPC_CHANNELS = {
   DELETE_PROJECT: 'delete-project',
   EXPORT_PROJECT: 'export-project',
   
+  // Chat
+  CHAT_MESSAGE: 'chat-message',
+  CHAT_RESPONSE: 'chat-response',
+  CHAT_STREAM_CHUNK: 'chat-stream-chunk',
+  CHAT_STREAM_END: 'chat-stream-end',
+  START_PROJECT_CHAT: 'start-project-chat',
+  
   // Storage
   GET_APP_PATH: 'get-app-path',
   ENSURE_STORAGE: 'ensure-storage',

@@ -159,6 +159,7 @@ ipcMain.handle('open-win', (_, arg) => {
 import { IPC_CHANNELS } from '../lib/ipc-channels'
 import { storage } from '../lib/storage'
 import { runWorkflow } from '../lib/workflow'
+import { startProjectChat, sendChatMessage } from '../lib/chat'
 
 // Storage handlers
 ipcMain.handle(IPC_CHANNELS.ENSURE_STORAGE, async () => {
@@ -185,8 +186,13 @@ ipcMain.handle(IPC_CHANNELS.DELETE_PROJECT, async (_, projectId: string) => {
 })
 
 // Generate project using workflow
-ipcMain.handle(IPC_CHANNELS.GENERATE_PROJECT, async (event, idea: string) => {
+ipcMain.handle(IPC_CHANNELS.GENERATE_PROJECT, async (event, data: { idea: string, chatHistory?: any[] }) => {
+  const { idea, chatHistory } = data
   console.log('IPC: Generate project requested with idea:', idea.substring(0, 50) + '...')
+  if (chatHistory) {
+    console.log('IPC: Chat history provided with', chatHistory.length, 'messages')
+  }
+  
   try {
     const result = await runWorkflow(idea, (node, status, message) => {
       console.log('IPC: Progress update -', node, status, message || '')
@@ -196,7 +202,7 @@ ipcMain.handle(IPC_CHANNELS.GENERATE_PROJECT, async (event, idea: string) => {
         status,
         message
       })
-    })
+    }, chatHistory)
     
     if (result.success && result.projectId) {
       // Reload projects list
@@ -213,5 +219,27 @@ ipcMain.handle(IPC_CHANNELS.GENERATE_PROJECT, async (event, idea: string) => {
       success: false, 
       error: error instanceof Error ? error.message : 'Failed to generate project' 
     }
+  }
+})
+
+// Chat handlers
+
+ipcMain.handle(IPC_CHANNELS.START_PROJECT_CHAT, async (event, data: { initialIdea: string }) => {
+  try {
+    await startProjectChat(data.initialIdea, event)
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to start chat:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to start chat' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.CHAT_MESSAGE, async (event, data: { content: string, chatHistory: any[] }) => {
+  try {
+    await sendChatMessage(data.content, data.chatHistory, event)
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to send chat message:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to send message' }
   }
 })

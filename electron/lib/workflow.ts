@@ -8,7 +8,8 @@ import type {
   BrainliftLog, 
   UIPlan, 
   UIStrategy,
-  ProjectFiles 
+  ProjectFiles,
+  ChatMessage 
 } from '../../src/types'
 import { storage } from './storage'
 
@@ -308,10 +309,14 @@ Rules:
 // Main workflow runner
 export async function runWorkflow(
   idea: string,
-  onProgress: ProgressCallback
+  onProgress: ProgressCallback,
+  chatHistory?: ChatMessage[]
 ): Promise<{ success: boolean; projectId?: string; error?: string }> {
   const projectId = nanoid()
   console.log('Starting workflow for project:', projectId)
+  if (chatHistory) {
+    console.log('Chat history provided:', chatHistory.length, 'messages')
+  }
   
   try {
     // Step 1: Process idea
@@ -388,6 +393,7 @@ export async function runWorkflow(
       uiStrategy,
       uiCode,
       v0Prompt,
+      chatHistory,
     }
 
     await storage.saveProject(projectId, projectFiles, projectIdea.title)
