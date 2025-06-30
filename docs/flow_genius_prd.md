@@ -4,63 +4,55 @@
 
 **FlowGenius**
 
----
-
 ## Project Description
 
 FlowGenius is a desktop application designed to help AI-first developers transform raw project ideas into complete development blueprints. It automates the planning phase by using LangGraph to orchestrate intelligent, local-first workflows that generate PRDs, checklists, Brainlifts, UI plans, and either v0 prompts or GPT-generated UI code — all within a previewable interface. Inspired by tools like v0, Cursor, and Notion, FlowGenius becomes the starting point for every project.
 
----
-
 ## Target Audience
 
-- Developers using Cursor, v0, ChatGPT, and other AI tooling  
-- Indie hackers and solopreneurs  
-- Engineers looking to automate project planning and prototyping  
-
----
+- Developers using Cursor, v0, ChatGPT, and other AI tooling
+- Indie hackers and solopreneurs
+- Engineers looking to automate project planning and prototyping
 
 ## Problem Statement
 
 Many developers rely on a mix of tools (ChatGPT, v0, Cursor, Notion, etc.) to convert ideas into structured work. This creates friction through manual copying, format inconsistencies, and loss of context. There’s no single tool that bridges idea capture, structured planning, and UI prototyping — all with persistent memory and automated workflows.
 
----
-
 ## Goals
 
-- Create a desktop-first tool for planning software projects  
-- Automate repeatable steps using LangGraph  
-- Provide instant visual feedback via previewable UIs  
-- Store and recall past project logic, reasoning, and layouts  
-
----
+- Create a desktop-first tool for planning software projects
+- Automate repeatable steps using LangGraph
+- Provide instant visual feedback via previewable UIs
+- Store and recall past project logic, reasoning, and layouts
 
 ## MVP Scope (FlowGenius Core)
 
 ### Key Features
 
-- Accept raw idea as text input  
-- Generate PRD using AI  
-- Generate checklist from PRD  
-- Generate UI plan and determine best rendering strategy (v0 or GPT)  
+- Accept raw idea as text input
+- Generate PRD using AI
+- Generate checklist from PRD
+- Generate UI plan and determine best rendering strategy (v0 or GPT)
 - Automatically generate either:
-  - v0 prompt (for simple layouts)  
-  - React/Tailwind code with mock data (for complex layouts)  
-- Display UI output with toggle between code and preview view (static only)  
-- Export full project as folder containing PRD, checklist, UI output, and optional v0 prompt  
+  - v0 prompt (for simple layouts)
+  - React/Tailwind code with mock data (for complex layouts)
+- Display UI output with toggle between code and preview view (static only)
+- Save all generated content to disk (not just in memory)
+- Export full project as folder containing PRD, checklist, UI output, and optional v0 prompt
+- Allow users to cancel long-running generation processes
+- Include bundled sample projects for onboarding
 
 ### Deferred Features
 
-- Stateful UI interaction in preview (for later versions)  
-- UI editing via drag-and-drop (WYSIWYG)  
-- Webhooks or integrations with third-party tools (GitHub, Figma, Notion)  
-- Direct deployment to v0 or Cursor-triggered scaffolding  
-
----
+- Stateful UI interaction in preview (for later versions)
+- UI editing via drag-and-drop (WYSIWYG)
+- Webhooks or integrations with third-party tools (GitHub, Figma, Notion)
+- Direct deployment to v0 or Cursor-triggered scaffolding
+- Project metadata refactor to per-folder JSON structure (to prevent index.json scaling issues)
 
 ## LangGraph Workflow Architecture
 
-```
+```plaintext
 [IdeaInputNode]
    ↓
 [PRDGeneratorNode]
@@ -80,147 +72,48 @@ Many developers rely on a mix of tools (ChatGPT, v0, Cursor, Notion, etc.) to co
 
 ### Node Responsibilities & Types
 
-- **IdeaInputNode**  
-  Input: `string`  
-  Output: `ProjectIdea { title: string, description: string }`
+- **IdeaInputNode**
+  - Input: `string`
+  - Output: `ProjectIdea { title: string, description: string }`
 
-- **PRDGeneratorNode**  
-  Input: `ProjectIdea`  
-  Output: `PRD { problem: string, goals: string[], scope: string, constraints: string[], success_criteria: string[] }`
+- **PRDGeneratorNode**
+  - Input: `ProjectIdea`
+  - Output: `PRD { problem: string, goals: string[], scope: string, constraints: string[], success_criteria: string[] }`
 
-- **ChecklistGeneratorNode**  
-  Input: `PRD`  
-  Output: `ChecklistItem[]` (with status fields: `todo`, `done`)
+- **ChecklistGeneratorNode**
+  - Input: `PRD`
+  - Output: `ChecklistItem[]` (with status fields: `todo`, `done`, optional `id`)
 
-- **BrainliftNode** (optional)  
-  Input: `PRD`  
-  Output: `BrainliftLog { assumptions: string[], decisions: string[], contextLinks: string[] }`
+- **BrainliftNode** (optional)
+  - Input: `PRD`
+  - Output: `BrainliftLog { assumptions: string[], decisions: string[], contextLinks: string[] }`
 
-- **UIPlannerNode**  
-  Input: `PRD`  
-  Output: `UIPlan { components: string[], layout: string, user_interactions: string[] }`
+- **UIPlannerNode**
+  - Input: `PRD`
+  - Output: `UIPlan { components: string[], layout: string, user_interactions: string[] }`
 
-- **UIStrategyDecisionNode**  
-  Input: `UIPlan`  
-  Output: `"v0" | "gpt"`
+- **UIStrategyDecisionNode**
+  - Input: `UIPlan`
+  - Output: `"v0" | "gpt"`
+  - Criteria:
+    - Use **v0** if layout has ≤ 3 components, one main section, no nested views
+    - Use **GPT** if there are multiple sections, reusable components, or conditionals
 
-- **V0PromptNode**  
-  Input: `UIPlan`  
-  Output: `v0Prompt { sections: object[] }`
+- **V0PromptNode**
+  - Input: `UIPlan`
+  - Output: `v0Prompt { sections: object[] }`
 
-- **GPTUICodeNode**  
-  Input: `UIPlan`  
-  Output: `tsxCode: string`
+- **GPTUICodeNode**
+  - Input: `UIPlan`
+  - Output: `tsxCode: string`
 
-- **PreviewRendererNode**  
-  Input: `tsxCode`  
-  Output: Component render preview (via Sandpack or ReactLive)
-
----
+- **PreviewRendererNode**
+  - Input: `tsxCode`
+  - Output: Component render preview (via Sandpack or ReactLive)
 
 ## UI Layout & Guidelines
 
-### Overview
-
-FlowGenius uses a docked, tabbed layout with a project list on the left and active workspace on the right. Tabs reflect the AI planning pipeline: Idea → PRD → Checklist → UI.
-
-### Main Layout
-
-```
-+-------------------------------------------------------------+
-| FlowGenius [Logo]                         ◯ ⚙ Light/Dark ⚫ |
-+-------------------------------------------------------------+
-| Project History |  [ + New Project ]                        |
-|-----------------+-------------------------------------------|
-| 📁 ai-notes     |  🧠 Project: "Meeting Summarizer App"     |
-| 📁 bug-reporter |                                           |
-|                 |  Tabs: [📝 Idea] [📜 PRD] [✅ Checklist]   |
-|                 |        [🎨 UI: Preview | Code ]           |
-|                 +-------------------------------------------+
-|                 |                                           |
-|                 |   [Tab content appears here...]           |
-|                 |                                           |
-+-----------------+-------------------------------------------+
-```
-
-### Tabs & Behavior
-
-- **Idea Tab**
-  - Input: Freeform text box  
-  - Action: `[Generate PRD]` button  
-  - Shows LangGraph step progress as it generates PRD  
-
-- **PRD Tab**
-  - Markdown-rendered PRD  
-  - Controls: ♻ Regenerate, 📄 Copy to Clipboard, 🖋️ Edit (disabled in MVP)
-
-- **Checklist Tab**
-  - Checklist rendered from PRD  
-  - Static markdown with checkbox icons  
-  - Controls: 📄 Copy to Clipboard
-
-- **UI Tab**
-  - Toggle buttons: `● Preview` | `Code`  
-  - Preview = Sandpack or ReactLive rendering of `ui.tsx`  
-  - Code = Monaco viewer of `ui.tsx` (read-only)
-
-### Styling & UX
-
-| Element    | Style                                        |
-|------------|-----------------------------------------------|
-| Fonts      | System sans-serif, Monaco for code            |
-| Theme      | Dark mode default, light mode toggle available |
-| Layout     | Responsive grid/flex, fixed sidebar            |
-| Icons      | Lucide or Tabler for navigation and context   |
-| Animations | Fade-in steps, spinner during generation      |
-
----
-
-## Storage Architecture
-
-### Location
-
-- macOS: `~/Library/Application Support/FlowGenius/`  
-- Windows: `%APPDATA%\\FlowGenius\\`  
-- Linux: `~/.config/FlowGenius/`  
-- Resolved with Electron’s `app.getPath('userData')`
-
-### File System Structure
-
-```
-FlowGenius/
-├── projects/
-│   ├── feedback-dashboard/
-│   │   ├── idea.txt
-│   │   ├── prd.md
-│   │   ├── checklist.md
-│   │   ├── brainlift.md
-│   │   ├── ui.tsx
-│   │   └── v0_prompt.json
-├── projects.json
-```
-
-### Project Index (`projects.json`)
-```json
-[
-  {
-    "id": "feedback-dashboard",
-    "title": "Feedback Dashboard",
-    "created": "2025-06-30T12:00:00Z",
-    "status": "complete",
-    "path": "projects/feedback-dashboard/"
-  }
-]
-```
-
-### Behavior
-
-- New project = new folder  
-- LangGraph outputs written to discrete files  
-- Index is used for project list in sidebar  
-- All data is local and offline-capable  
-
----
+...[unchanged content from previous UI Layout section]...
 
 ## File Output Example
 
@@ -234,85 +127,107 @@ projects/
 │   └── v0_prompt.json
 ```
 
----
-
 ## Sample Project Output
 
-### Input Idea
-> “A dashboard that lets users submit and track feedback across teams.”
+...[unchanged sample output]...
 
-### Generated PRD
-```markdown
-## Problem
-Teams receive user feedback through various disconnected channels, making it hard to track, categorize, and act on.
+## Storage Architecture
 
-## Goals
-- Centralize feedback collection
-- Track progress of resolutions
-- Categorize by team/topic
+### Local Project Storage (MVP)
 
-## Scope
-- Feedback submission UI
-- Tagging system
-- Resolution tracker
+All data will be stored **locally on the user's machine** under the following path:
 
-## Constraints
-- No authentication (MVP)
-- Local-only storage
+- **macOS**: `~/Library/Application Support/FlowGenius/projects/`
+- **Windows**: `%APPDATA%\FlowGenius\projects\`
+- **Linux**: `~/.config/FlowGenius/projects/`
 
-## Success Criteria
-- Submit feedback
-- Assign tags
-- Move items across status columns
+Each project gets its own folder:
+
+```
+projects/
+├── feedback-tool/
+│   ├── idea.txt
+│   ├── prd.md
+│   ├── checklist.md
+│   ├── brainlift.md
+│   ├── ui.tsx
+│   └── v0_prompt.json
 ```
 
-### Checklist
-- [ ] Build feedback form
-- [ ] Add tags dropdown
-- [ ] Create drag-and-drop board
-- [ ] Persist data locally
+Additionally, a global index file tracks metadata:
 
-### UI Plan
-- Layout: Header, Sidebar, 3-Column Board  
-- Components: `<Form>`, `<TagDropdown>`, `<Card>`, `<Column>`  
-- Interactions: Add feedback, drag-and-drop movement, edit tags  
+```
+projects/
+├── index.json
+```
 
-### Strategy
-- UI Generation Method: `GPT` (not v0)
+Example contents of `index.json`:
 
----
+```json
+[
+  {
+    "id": "feedback-tool",
+    "title": "Feedback Dashboard",
+    "created": "2025-06-30T12:00:00Z",
+    "status": "complete",
+    "version": "0.1.0"
+  }
+]
+```
+
+This local storage model provides easy backup, no cloud dependencies, and direct access to project data. A future enhancement may split this index into per-folder `project.json` files to reduce the risk of corruption.
 
 ## Open Questions
 
 ### Technical Architecture
 
-- ✅ LangGraph will be used as the core workflow engine  
-- ⚠️ Ollama fallback is planned post-MVP  
-- ✅ All workflows will run locally inside Electron  
-- ✅ No database needed — local file storage used  
-- ✅ Project data is saved to user’s `app.getPath('userData')` directory  
+- LangGraph will be used for all workflow orchestration
+- Fallback to Ollama may be considered post-MVP
+- LangGraph will be embedded within Electron, running in the **main process**
+  - Communication between React UI and LangGraph will use **IPC (Inter-Process Communication)**
+  - Renderer (React) sends input → main process runs LangGraph → results returned to renderer
+  - Keeps UI responsive and avoids Node/browser context conflicts
+- All generated content is saved to disk, not kept in memory only
+- Error handling UI and retry logic will be minimal but in place for MVP (toast, retry button, error banner)
+- LangGraph node outputs will be stored as separate files for traceability and debugging
+- Cancel button will be available to stop active LangGraph workflows
+- Sample projects will be bundled with the app to guide first-time users
 
 ### UI & UX
 
-- ✅ Custom UI layout designed for MVP  
-- ⚠️ User cannot edit generated code in MVP  
-- ✅ Default to OpenAI, API key configuration comes later  
-- ⚠️ UI complexity is limited to static layouts only  
-- ⚠️ UI previews are non-interactive (mocked with fake data)
+- UI uses tabs: [📝 Idea] [📜 PRD] [✅ Checklist] [🎨 UI: Preview | Code]
+- Each tab shows generation progress/status per node
+- Regenerate buttons available per step (PRD, Checklist, UI)
+- Sandpack or ReactLive renders static UI preview
+- Monaco shows readonly generated code
+- Cancel button for long LangGraph execution
+- Static mock data used in preview rendering
+- No WYSIWYG editor or code editing in MVP
 
 ### LangGraph Features
 
-- ✅ Node types and schemas are locked in  
-- ⚠️ Optional: dev-only debug panel for LangGraph execution graph  
-- ✅ Flow is deterministic with no user interruption unless error occurs  
+- Nodes execute sequentially and deterministically
+- Max token length: TBD
+- Retry policy: 3 attempts
+- Timeout: 30 seconds
+- Cancel support via IPC
+- Node statuses tracked (`pending`, `in-progress`, `success`, `error`)
 
-### Export & Project Management
+### Export and Project Management
 
-- ✅ Projects are saved locally  
-- ⚠️ Export options will be added post-MVP  
+- Export each part (PRD, checklist, UI) as individual `.md`/`.tsx`/`.json` files
+- Sample project bundles included for onboarding
 
-### Security
+### Security & API Keys
 
-- ✅ No user auth or encryption needed in MVP  
-- ⚠️ Future enhancement: support for API key storage and sync  
-- ✅ Everything runs and stays on the user’s machine
+- No user authentication needed
+- All files stored locally
+- Future enhancement may support API key configuration UI
+
+## Status
+
+- MVP planned and structured
+- LangGraph selected as core architecture
+- UI/UX inspired by proven productivity tools
+- Implementation ready with fallback plan for future scaling
+

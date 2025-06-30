@@ -1,3 +1,6 @@
+import { config } from 'dotenv'
+config({ path: '.env.local' })
+
 import { app, BrowserWindow, shell, ipcMain } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -120,4 +123,34 @@ ipcMain.handle('open-win', (_, arg) => {
   } else {
     childWindow.loadFile(indexHtml, { hash: arg })
   }
+})
+
+// FlowGenius IPC Handlers
+import { IPC_CHANNELS } from '../lib/ipc-channels'
+import { storage } from '../lib/storage'
+
+// Storage handlers
+ipcMain.handle(IPC_CHANNELS.ENSURE_STORAGE, async () => {
+  await storage.ensureStorage()
+})
+
+ipcMain.handle(IPC_CHANNELS.LIST_PROJECTS, async () => {
+  return await storage.listProjects()
+})
+
+ipcMain.handle(IPC_CHANNELS.LOAD_PROJECT, async (_, projectId: string) => {
+  return await storage.loadProject(projectId)
+})
+
+// Placeholder for generate project - will implement with LangGraph
+ipcMain.handle(IPC_CHANNELS.GENERATE_PROJECT, async (event, idea: string) => {
+  // Send progress updates
+  event.sender.send(IPC_CHANNELS.GENERATION_PROGRESS, {
+    node: 'IdeaInputNode',
+    status: 'in-progress',
+    message: 'Processing your idea...'
+  })
+  
+  // TODO: Implement LangGraph workflow
+  return { success: false, error: 'LangGraph not yet implemented' }
 })
