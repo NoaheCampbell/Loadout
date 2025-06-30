@@ -9,7 +9,8 @@ import type {
   UIPlan, 
   UIStrategy,
   ProjectFiles,
-  ChatMessage 
+  ChatMessage,
+  UIFile
 } from '../../src/types'
 import { storage } from './storage'
 
@@ -235,7 +236,94 @@ Format as JSON with sections for:
   return JSON.parse(jsonMatch[0])
 }
 
-// Generate UI code
+// Generate multiple UI files
+async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan): Promise<UIFile[]> {
+  const prompt = `
+Create a complete React application with multiple files for this project:
+
+Project: ${projectIdea.title}
+Components needed: ${uiPlan.components.join(', ')}
+Layout: ${uiPlan.layout}
+Interactions: ${uiPlan.user_interactions.join(', ')}
+
+Create a PROPERLY STRUCTURED multi-file React application:
+
+1. **Component Organization** - Create separate files for distinct UI components:
+   - Each major UI section gets its own file (Header.tsx, Sidebar.tsx, etc.)
+   - Shared/reusable components in their own files (Button.tsx, Card.tsx, etc.)
+   - Main App.tsx that uses all components
+
+2. **File Structure Example**:
+   - App.tsx (main component that renders the full application)
+   - Header.tsx (navigation bar/header component)
+   - Sidebar.tsx (sidebar navigation if applicable)
+   - ContentArea.tsx (main content component)
+   - Any other components needed for the project
+
+3. **IMPORTANT**: Each component must be:
+   - Fully functional with realistic content
+   - Self-contained but accessible globally via window
+   - Include state management where appropriate
+   - Have proper event handlers and interactions
+
+Return ONLY this JSON structure:
+{
+  "files": [
+    {
+      "filename": "Header.tsx",
+      "type": "component",
+      "content": "const Header = () => {\n  return React.createElement(...);\n};\nwindow.Header = Header;"
+    },
+    {
+      "filename": "App.tsx",
+      "type": "main",
+      "content": "const App = () => {\n  return React.createElement('div', null,\n    React.createElement(Header),\n    ...);\n};\nwindow.App = App;"
+    }
+  ]
+}
+
+Technical Rules:
+- Use React.createElement() syntax - NO JSX
+- Each component: window.ComponentName = ComponentName
+- Components reference each other directly (e.g., React.createElement(Header))
+- NO import/export statements
+- Include realistic data and full functionality
+`
+
+  const response = await codeLLM.invoke([
+    new SystemMessage(`You are an expert React developer creating production-ready applications.
+
+CRITICAL: You MUST return ONLY a valid JSON object with a "files" array. No other text.
+
+Each file in the array must have:
+- filename: Component name with .tsx extension
+- type: "component" or "main" 
+- content: Complete React component code using React.createElement
+
+Component Rules:
+1. Each component must end with: window.ComponentName = ComponentName
+2. Use other components via React.createElement(ComponentName)
+3. The main App.tsx must render the complete application
+4. Include realistic, production-ready UI with proper styling
+5. Add state management, event handlers, and full functionality
+
+DO NOT include any markdown, explanations, or text outside the JSON.`),
+    new HumanMessage(prompt + '\n\nREMEMBER: Return ONLY the JSON object, no other text!'),
+  ])
+
+  let content = response.content as string
+  
+  // Extract JSON from response
+  const jsonMatch = content.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    throw new Error('No JSON found in UI generation response')
+  }
+  
+  const result = JSON.parse(jsonMatch[0]) as { files: UIFile[] }
+  return result.files
+}
+
+// Legacy: Generate single UI file
 async function generateUICode(projectIdea: ProjectIdea, uiPlan: UIPlan): Promise<string> {
   const prompt = `
 Create a fully functional React component with Tailwind CSS that actually implements the project concept:
@@ -463,13 +551,28 @@ export async function runWorkflow(
     // Step 6: Generate UI code or v0 prompt
     console.log('Step 6: Generating UI...')
     let uiCode: string | undefined
+    let uiFiles: UIFile[] | undefined
     let v0Prompt: any | undefined
     
     if (uiStrategy === 'gpt') {
       console.log('Generating GPT UI code...')
       onProgress('GPTUICodeNode', 'in-progress', 'Generating UI code...')
-      uiCode = await generateUICode(projectIdea, uiPlan)
-      console.log('UI code generated:', uiCode ? uiCode.length + ' characters' : 'none')
+      
+      // Try to generate multiple files first
+      try {
+        uiFiles = await generateUIFiles(projectIdea, uiPlan)
+        console.log('UI files generated:', uiFiles.length, 'files')
+        
+        // Also generate single file for backwards compatibility
+        // Combine all files into one for legacy support
+        uiCode = uiFiles.map(file => `// File: ${file.filename}\n${file.content}`).join('\n\n')
+      } catch (error) {
+        console.error('Multi-file generation failed, falling back to single file:', error)
+        // Fall back to single file generation
+        uiCode = await generateUICode(projectIdea, uiPlan)
+        console.log('UI code generated (single file):', uiCode ? uiCode.length + ' characters' : 'none')
+      }
+      
       onProgress('GPTUICodeNode', 'success')
     } else {
       console.log('Generating v0 prompt...')
@@ -489,6 +592,7 @@ export async function runWorkflow(
       uiPlan,
       uiStrategy,
       uiCode,
+      uiFiles,
       v0Prompt,
       chatHistory,
     }

@@ -54,6 +54,12 @@ export interface V0Prompt {
   }>;
 }
 
+export interface UIFile {
+  filename: string;
+  content: string;
+  type: 'component' | 'style' | 'utils' | 'main';
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -69,6 +75,7 @@ export interface ProjectFiles {
   uiPlan: UIPlan;
   uiStrategy: UIStrategy;
   v0Prompt?: V0Prompt;
-  uiCode?: string;
+  uiCode?: string;  // Legacy: single file
+  uiFiles?: UIFile[];  // New: multiple files
   chatHistory?: ChatMessage[];
 } 

@@ -59,6 +59,22 @@ export class StorageManager {
     if (files.uiCode) {
       await fs.writeFile(path.join(projectPath, 'ui.tsx'), files.uiCode);
     }
+    
+    // Save UI files in ui/ subdirectory
+    if (files.uiFiles && files.uiFiles.length > 0) {
+      const uiPath = path.join(projectPath, 'ui');
+      await fs.mkdir(uiPath, { recursive: true });
+      
+      for (const file of files.uiFiles) {
+        await fs.writeFile(path.join(uiPath, file.filename), file.content);
+      }
+      
+      // Save UI files metadata
+      await fs.writeFile(
+        path.join(uiPath, 'files.json'), 
+        JSON.stringify(files.uiFiles.map(f => ({ filename: f.filename, type: f.type })), null, 2)
+      );
+    }
     if (files.v0Prompt) {
       await fs.writeFile(path.join(projectPath, 'v0_prompt.json'), JSON.stringify(files.v0Prompt, null, 2));
     }
@@ -119,6 +135,28 @@ export class StorageManager {
         files.uiCode = await fs.readFile(path.join(projectPath, 'ui.tsx'), 'utf-8');
       } catch (e) {
         console.log('Storage: Failed to load ui.tsx:', e instanceof Error ? e.message : String(e));
+      }
+      
+      // Try to load UI files from ui/ subdirectory
+      try {
+        const uiPath = path.join(projectPath, 'ui');
+        const metadataPath = path.join(uiPath, 'files.json');
+        const metadataContent = await fs.readFile(metadataPath, 'utf-8');
+        const metadata = JSON.parse(metadataContent) as Array<{ filename: string; type: string }>;
+        
+        files.uiFiles = [];
+        for (const meta of metadata) {
+          const content = await fs.readFile(path.join(uiPath, meta.filename), 'utf-8');
+          files.uiFiles.push({
+            filename: meta.filename,
+            type: meta.type as 'component' | 'style' | 'utils' | 'main',
+            content
+          });
+        }
+        console.log('Storage: Loaded UI files:', files.uiFiles.length);
+      } catch (e) {
+        // UI files are optional (for backwards compatibility)
+        console.log('Storage: No UI files found (normal for older projects)');
       }
       
       try {

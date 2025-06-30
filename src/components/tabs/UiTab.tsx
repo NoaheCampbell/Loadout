@@ -457,6 +457,7 @@ export default function UiTab() {
   const { currentProjectData, uiViewMode, setUiViewMode } = useStore()
   const [showRawCode, setShowRawCode] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
   
   if (!currentProjectData) {
     return (
@@ -467,9 +468,24 @@ export default function UiTab() {
   }
 
   const handleCopyCode = () => {
-    if (currentProjectData.uiCode) {
-      navigator.clipboard.writeText(currentProjectData.uiCode)
-      toast.success('Code copied to clipboard!')
+    // If multiple files, copy all or selected file
+    if (currentProjectData.uiFiles && currentProjectData.uiFiles.length > 0) {
+      if (selectedFile) {
+        // Copy selected file
+        const file = currentProjectData.uiFiles.find(f => f.filename === selectedFile);
+        if (file) {
+          navigator.clipboard.writeText(file.content);
+          toast.success(`Copied ${file.filename} to clipboard!`);
+        }
+      } else {
+        // Copy all files combined
+        const allCode = getCombinedCode();
+        navigator.clipboard.writeText(allCode);
+        toast.success('Copied all files to clipboard!');
+      }
+    } else if (currentProjectData.uiCode) {
+      navigator.clipboard.writeText(currentProjectData.uiCode);
+      toast.success('Code copied to clipboard!');
     }
   }
 
@@ -648,11 +664,31 @@ window.App = (() => {
 };`;
   }
 
+  // Combine multiple UI files into a single code string
+  const getCombinedCode = (): string => {
+    // If we have multiple UI files, combine them
+    if (currentProjectData?.uiFiles && currentProjectData.uiFiles.length > 0) {
+      // Sort files so that components come first, then main/App file
+      const sortedFiles = [...currentProjectData.uiFiles].sort((a, b) => {
+        if (a.type === 'main' || a.filename.toLowerCase().includes('app')) return 1;
+        if (b.type === 'main' || b.filename.toLowerCase().includes('app')) return -1;
+        return 0;
+      });
+      
+      // Combine all files
+      return sortedFiles.map(file => file.content).join('\n\n');
+    }
+    
+    // Fall back to single file
+    return currentProjectData?.uiCode || '';
+  };
+
   // Move useMemo after preprocessCode is defined
   const processedCode = useMemo(() => {
-    if (!currentProjectData?.uiCode) return '';
-    return preprocessCode(currentProjectData.uiCode);
-  }, [currentProjectData?.uiCode]);
+    const combinedCode = getCombinedCode();
+    if (!combinedCode) return '';
+    return preprocessCode(combinedCode);
+  }, [currentProjectData?.uiCode, currentProjectData?.uiFiles]);
 
   const CodeEditor = ({ value, className = '', style = {} }: { value: string; className?: string; style?: React.CSSProperties }) => {
     const lineCount = value.split('\n').length
@@ -810,8 +846,38 @@ window.App = (() => {
                 )}
               </div>
             ) : (
-              <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
-                <CodeEditor value={currentProjectData.uiCode || ''} />
+              <div className="h-full flex flex-col">
+                {/* File tabs if multiple files exist */}
+                {currentProjectData.uiFiles && currentProjectData.uiFiles.length > 0 ? (
+                  <>
+                    <div className="flex gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+                      {currentProjectData.uiFiles.map(file => (
+                        <button
+                          key={file.filename}
+                          onClick={() => setSelectedFile(file.filename)}
+                          className={`px-3 py-1 text-sm rounded-md whitespace-nowrap transition-colors ${
+                            (selectedFile || currentProjectData.uiFiles![0].filename) === file.filename
+                              ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                              : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
+                          }`}
+                        >
+                          {file.filename}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
+                      <CodeEditor 
+                        value={
+                          currentProjectData.uiFiles.find(f => f.filename === (selectedFile || currentProjectData.uiFiles![0].filename))?.content || ''
+                        } 
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+                    <CodeEditor value={currentProjectData.uiCode || ''} />
+                  </div>
+                )}
               </div>
             )}
           </div>
