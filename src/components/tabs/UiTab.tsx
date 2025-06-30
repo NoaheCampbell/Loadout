@@ -899,7 +899,13 @@ export default App;`;
       const bodyMatch = staticHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i)
       if (!bodyMatch) return staticHtml
       
-      const bodyContent = bodyMatch[1]
+      let bodyContent = bodyMatch[1]
+      
+      // Remove the static preview banner if present
+      bodyContent = bodyContent.replace(
+        /<div[^>]*style="[^"]*background:\s*#f0f9ff[^"]*"[^>]*>[\s\S]*?Static Preview[\s\S]*?<\/div>/i,
+        ''
+      )
       
       return `
 <!DOCTYPE html>
