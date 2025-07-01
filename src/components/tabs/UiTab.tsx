@@ -3,12 +3,12 @@ import { Eye, Code2, Copy, AlertCircle, RefreshCw, FileCode, FileCode2, Folder, 
 import { useStore } from '../../store'
 import toast from 'react-hot-toast'
 import Editor from 'react-simple-code-editor'
-import { highlight, languages } from 'prismjs'
-import 'prismjs/components/prism-jsx'
+import Prism from 'prismjs'
 import 'prismjs/components/prism-javascript'
 import 'prismjs/components/prism-typescript'
+import 'prismjs/components/prism-jsx'
 import 'prismjs/components/prism-tsx'
-import 'prismjs/themes/prism-tomorrow.css'
+// Removed prism theme - using custom styles only
 import { ipc } from '../../lib/ipc'
 import type { GenerationProgress } from '../../types'
 import JSZip from 'jszip'
@@ -16,6 +16,28 @@ import { saveAs } from 'file-saver'
 
 // Custom styles for better syntax highlighting
 const syntaxStyles = `
+  /* Reset all code and pre styles */
+  pre, code, pre *, code * {
+    background: none !important;
+    background-color: transparent !important;
+    text-shadow: none !important;
+  }
+  
+  /* Override Prism theme if any remnants exist */
+  pre[class*="language-"],
+  code[class*="language-"] {
+    background: transparent !important;
+    text-shadow: none !important;
+  }
+  
+  pre[class*="language-"]::selection,
+  pre[class*="language-"] ::selection,
+  code[class*="language-"]::selection,
+  code[class*="language-"] ::selection {
+    background: rgba(100, 100, 100, 0.3) !important;
+  }
+  
+  /* Token colors */
   .token.comment { color: #6A9955; }
   .token.prolog { color: #6A9955; }
   .token.doctype { color: #6A9955; }
@@ -55,26 +77,40 @@ const syntaxStyles = `
   .token.important { color: #569cd6; }
   .token.variable { color: #9CDCFE; }
   
-  /* Ensure perfect line height alignment */
-  .npm__react-simple-code-editor__textarea {
-    line-height: 24px !important;
-    font-size: 14px !important;
+  /* Remove ALL backgrounds from ALL tokens */
+  span[class*="token"] {
+    background: none !important;
+    background-color: transparent !important;
   }
   
-  pre.npm__react-simple-code-editor__pre {
-    line-height: 24px !important;
-    font-size: 14px !important;
-    margin: 0 !important;
-    padding: 20px 0 !important;
+  /* Ensure proper whitespace handling */
+  .code-editor-wrapper {
+    font-feature-settings: "liga" 0, "calt" 0;
+  }
+  
+  .code-content pre {
+    white-space: pre !important;
+    word-wrap: normal !important;
+    overflow-x: auto !important;
+    tab-size: 2 !important;
+  }
+  
+  .code-content code {
+    white-space: pre !important;
+    background: transparent !important;
+    display: block !important;
   }
 `;
 
 // Inject custom styles
 if (typeof document !== 'undefined') {
-  const styleElement = document.getElementById('prism-custom-styles') || document.createElement('style');
-  styleElement.id = 'prism-custom-styles';
+  let styleElement = document.getElementById('prism-custom-styles');
+  if (!styleElement) {
+    styleElement = document.createElement('style');
+    styleElement.id = 'prism-custom-styles';
+    document.head.appendChild(styleElement);
+  }
   styleElement.textContent = syntaxStyles;
-  document.head.appendChild(styleElement);
 }
 
 function LocalhostPreview({ files, refreshKey }: { files: any[]; refreshKey: number }) {
@@ -488,9 +524,12 @@ Generated on: ${new Date().toLocaleString()}
 
   const highlightCode = (code: string) => {
     try {
-      return highlight(code, languages.jsx, 'jsx')
+      // Use typescript/tsx highlighting for better accuracy
+      const language = Prism.languages.tsx || Prism.languages.typescript || Prism.languages.jsx || Prism.languages.javascript
+      return Prism.highlight(code, language, 'tsx')
     } catch (e) {
-      return code
+      // Fallback to plain text if highlighting fails
+      return code.replace(/</g, '&lt;').replace(/>/g, '&gt;')
     }
   }
 
@@ -516,10 +555,18 @@ Generated on: ${new Date().toLocaleString()}
   };
 
   const CodeEditor = ({ value, className = '', style = {} }: { value: string; className?: string; style?: React.CSSProperties }) => {
-    const highlightedCode = useMemo(() => highlightCode(value), [value])
+    const highlightedCode = useMemo(() => {
+      // Apply syntax highlighting
+      const highlighted = highlightCode(value)
+      // Remove any inline styles that might contain backgrounds
+      return highlighted
+        .replace(/style="[^"]*"/g, '') // Remove all inline styles
+        .replace(/class="([^"]*\s)?token-tab(\s[^"]*)?"/g, 'class="$1token$2"') // Replace token-tab with token
+        .replace(/\t/g, '  ') // Convert tabs to 2 spaces for consistent display
+    }, [value])
     
     return (
-      <div className="h-full bg-gray-900 dark:bg-gray-950 overflow-auto relative">
+      <div className="h-full bg-gray-900 dark:bg-gray-950 overflow-auto relative code-editor-wrapper">
         <div className="flex min-h-full">
           {/* Line numbers column */}
           <div className="flex-shrink-0 select-none sticky left-0 bg-gray-900 dark:bg-gray-950 z-10 border-r border-gray-800 dark:border-gray-900">
@@ -530,7 +577,8 @@ Generated on: ${new Date().toLocaleString()}
                 fontFamily: '"Fira Code", "Fira Mono", Consolas, monospace',
                 lineHeight: '1.5rem',
                 paddingTop: '20px',
-                paddingBottom: '20px'
+                paddingBottom: '20px',
+                whiteSpace: 'pre'
               }}
             >
               {value.split('\n').map((_, i) => `${i + 1}\n`).join('')}
@@ -538,7 +586,7 @@ Generated on: ${new Date().toLocaleString()}
           </div>
           
           {/* Code content */}
-          <div className="flex-1 overflow-x-auto">
+          <div className="flex-1 overflow-x-auto code-content">
             <pre 
               className="m-0 p-5 pl-5"
               style={{ 
@@ -546,10 +594,15 @@ Generated on: ${new Date().toLocaleString()}
                 fontFamily: '"Fira Code", "Fira Mono", Consolas, monospace',
                 lineHeight: '1.5rem',
                 color: '#D4D4D4',
-                tabSize: 2
+                tabSize: 2,
+                whiteSpace: 'pre',
+                backgroundColor: 'transparent'
               }}
             >
-              <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
+              <code 
+                style={{ backgroundColor: 'transparent' }}
+                dangerouslySetInnerHTML={{ __html: highlightedCode }} 
+              />
             </pre>
           </div>
         </div>
