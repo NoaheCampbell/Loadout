@@ -1,5 +1,6 @@
 import { ChatOpenAI } from '@langchain/openai'
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
+import { StateGraph, Annotation } from '@langchain/langgraph'
 import { nanoid } from 'nanoid'
 import type { 
   ProjectIdea, 
@@ -15,34 +16,321 @@ import type {
 } from '../../src/types'
 import { storage } from './storage'
 
+// Define the workflow state using LangGraph Annotation
+const WorkflowStateAnnotation = Annotation.Root({
+  // Input
+  idea: Annotation<string>,
+  chatHistory: Annotation<ChatMessage[]>({
+    reducer: (current, update) => update ?? current,
+    default: () => []
+  }),
+  projectId: Annotation<string>,
+  
+  // Generated artifacts
+  projectIdea: Annotation<ProjectIdea | undefined>,
+  prd: Annotation<PRD | undefined>,
+  checklist: Annotation<ChecklistItem[] | undefined>,
+  brainlift: Annotation<BrainliftLog | undefined>,
+  uiPlan: Annotation<UIPlan | undefined>,
+  uiStrategy: Annotation<UIStrategy | undefined>,
+  uiCode: Annotation<string | undefined>,
+  uiFiles: Annotation<UIFile[] | undefined>,
+  v0Prompt: Annotation<any>,
+  validationIssues: Annotation<FileValidationIssues[] | undefined>,
+  
+  // Control
+  error: Annotation<string | undefined>,
+  onProgress: Annotation<ProgressCallback | undefined>
+})
+
+// Type alias for the state
+type WorkflowState = typeof WorkflowStateAnnotation.State
+
 // Initialize LLM
 const llm = new ChatOpenAI({
-  modelName: 'gpt-4-1106-preview',
+  modelName: 'gpt-4',
   temperature: 0.7,
 })
 
-// Specialized LLM for code generation with balanced temperature
 const codeLLM = new ChatOpenAI({
-  modelName: 'gpt-4-1106-preview',
-  temperature: 0.5, // Balanced temperature for creative but consistent code
+  modelName: 'gpt-4',
+  temperature: 0.5,
 })
 
 // Progress callback type
 type ProgressCallback = (node: string, status: 'pending' | 'in-progress' | 'success' | 'error', message?: string) => void
 
+// ===== LangGraph Node Functions =====
+
+// Process idea node
+async function processIdeaNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
+  try {
+    state.onProgress?.('IdeaInputNode', 'in-progress', 'Processing your idea...')
+    const projectIdea = await processIdea(state.idea)
+    state.onProgress?.('IdeaInputNode', 'success')
+    return { projectIdea }
+  } catch (error) {
+    state.onProgress?.('IdeaInputNode', 'error', error instanceof Error ? error.message : 'Failed to process idea')
+    return { error: error instanceof Error ? error.message : 'Failed to process idea' }
+  }
+}
+
+// Generate PRD node
+async function generatePRDNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
+  try {
+    if (!state.projectIdea) throw new Error('Project idea required')
+    state.onProgress?.('PRDGeneratorNode', 'in-progress', 'Generating PRD...')
+    const prd = await generatePRD(state.projectIdea)
+    state.onProgress?.('PRDGeneratorNode', 'success')
+    return { prd }
+  } catch (error) {
+    state.onProgress?.('PRDGeneratorNode', 'error', error instanceof Error ? error.message : 'Failed to generate PRD')
+    return { error: error instanceof Error ? error.message : 'Failed to generate PRD' }
+  }
+}
+
+// Generate checklist node
+async function generateChecklistNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
+  try {
+    if (!state.prd) throw new Error('PRD required')
+    state.onProgress?.('ChecklistGeneratorNode', 'in-progress', 'Creating development checklist...')
+    const checklist = await generateChecklist(state.prd)
+    state.onProgress?.('ChecklistGeneratorNode', 'success')
+    return { checklist }
+  } catch (error) {
+    state.onProgress?.('ChecklistGeneratorNode', 'error', error instanceof Error ? error.message : 'Failed to generate checklist')
+    return { error: error instanceof Error ? error.message : 'Failed to generate checklist' }
+  }
+}
+
+// Generate brainlift node (optional)
+async function generateBrainliftNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
+  try {
+    if (!state.projectIdea || !state.prd) return {} // Skip if prerequisites not met
+    state.onProgress?.('BrainliftNode', 'in-progress', 'Documenting assumptions and decisions...')
+    const brainlift = await generateBrainlift(state.projectIdea, state.prd)
+    if (brainlift) {
+      state.onProgress?.('BrainliftNode', 'success')
+    }
+    return { brainlift: brainlift || undefined }
+  } catch (error) {
+    console.error('Failed to generate brainlift:', error)
+    return {} // Non-critical, don't set error
+  }
+}
+
+// Generate UI plan node
+async function generateUIPlanNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
+  try {
+    if (!state.projectIdea || !state.prd) throw new Error('Project idea and PRD required')
+    state.onProgress?.('UIPlannerNode', 'in-progress', 'Planning UI components...')
+    const uiPlan = await generateUIPlan(state.projectIdea, state.prd)
+    state.onProgress?.('UIPlannerNode', 'success')
+    return { uiPlan }
+  } catch (error) {
+    state.onProgress?.('UIPlannerNode', 'error', error instanceof Error ? error.message : 'Failed to generate UI plan')
+    return { error: error instanceof Error ? error.message : 'Failed to generate UI plan' }
+  }
+}
+
+// Determine strategy node
+async function determineStrategyNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
+  try {
+    if (!state.uiPlan) throw new Error('UI plan required')
+    state.onProgress?.('UIStrategyDecisionNode', 'in-progress', 'Determining UI generation strategy...')
+    const uiStrategy = determineUIStrategy(state.uiPlan)
+    state.onProgress?.('UIStrategyDecisionNode', 'success')
+    return { uiStrategy }
+  } catch (error) {
+    state.onProgress?.('UIStrategyDecisionNode', 'error', error instanceof Error ? error.message : 'Failed to determine strategy')
+    return { error: error instanceof Error ? error.message : 'Failed to determine strategy' }
+  }
+}
+
+// Generate UI node
+async function generateUINode(state: WorkflowState): Promise<Partial<WorkflowState>> {
+  try {
+    if (!state.projectIdea || !state.uiPlan || !state.uiStrategy) {
+      throw new Error('Project idea, UI plan, and strategy required')
+    }
+    
+    if (state.uiStrategy === 'gpt') {
+      state.onProgress?.('GPTUICodeNode', 'in-progress', 'Generating UI code...')
+      
+      try {
+        const generateResult = await generateUIFiles(state.projectIdea, state.uiPlan, state.onProgress)
+        const uiFiles = generateResult.files
+        const validationIssues = generateResult.validationIssues
+        
+        // Also generate single file for backwards compatibility
+        const uiCode = uiFiles.map(file => `// File: ${file.filename}\n${file.content}`).join('\n\n')
+        
+        state.onProgress?.('GPTUICodeNode', 'success')
+        return { uiFiles, uiCode, validationIssues }
+      } catch (error) {
+        console.error('Multi-file generation failed, falling back to single file:', error)
+        const uiCode = await generateUICode(state.projectIdea, state.uiPlan)
+        state.onProgress?.('GPTUICodeNode', 'success')
+        return { uiCode }
+      }
+    } else {
+      state.onProgress?.('V0PromptNode', 'in-progress', 'Generating v0 prompt...')
+      const v0Prompt = await generateV0Prompt(state.projectIdea, state.uiPlan)
+      state.onProgress?.('V0PromptNode', 'success')
+      return { v0Prompt }
+    }
+  } catch (error) {
+    const nodeName = state.uiStrategy === 'gpt' ? 'GPTUICodeNode' : 'V0PromptNode'
+    state.onProgress?.(nodeName, 'error', error instanceof Error ? error.message : 'Failed to generate UI')
+    return { error: error instanceof Error ? error.message : 'Failed to generate UI' }
+  }
+}
+
+// Save project node
+async function saveProjectNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
+  try {
+    if (!state.projectIdea) throw new Error('Project idea required to save')
+    
+    const projectFiles: Partial<ProjectFiles> = {
+      idea: state.idea,
+      prd: state.prd,
+      checklist: state.checklist,
+      brainlift: state.brainlift,
+      uiPlan: state.uiPlan,
+      uiStrategy: state.uiStrategy,
+      uiCode: state.uiCode,
+      uiFiles: state.uiFiles,
+      uiValidationIssues: state.validationIssues,
+      v0Prompt: state.v0Prompt,
+      chatHistory: state.chatHistory,
+    }
+    
+    await storage.saveProject(state.projectId, projectFiles, state.projectIdea.title)
+    console.log('Project saved successfully:', state.projectId)
+    return {}
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Failed to save project' }
+  }
+}
+
+// Create the LangGraph workflow
+function createWorkflow() {
+  const workflow = new StateGraph(WorkflowStateAnnotation)
+    .addNode('processIdea', processIdeaNode)
+    .addNode('generatePRD', generatePRDNode)
+    .addNode('generateChecklist', generateChecklistNode)
+    .addNode('generateBrainlift', generateBrainliftNode)
+    .addNode('generateUIPlan', generateUIPlanNode)
+    .addNode('determineStrategy', determineStrategyNode)
+    .addNode('generateUI', generateUINode)
+    .addNode('saveProject', saveProjectNode)
+    
+  // Sequential flow with some parallelization
+  workflow.addEdge('__start__', 'processIdea')
+  workflow.addEdge('processIdea', 'generatePRD')
+  
+  // These three can run in parallel after PRD
+  workflow.addEdge('generatePRD', 'generateChecklist')
+  workflow.addEdge('generatePRD', 'generateBrainlift')
+  workflow.addEdge('generatePRD', 'generateUIPlan')
+  
+  // Wait for all three before determining strategy
+  workflow.addEdge('generateChecklist', 'determineStrategy')
+  workflow.addEdge('generateBrainlift', 'determineStrategy')
+  workflow.addEdge('generateUIPlan', 'determineStrategy')
+  
+  // Then generate UI and save
+  workflow.addEdge('determineStrategy', 'generateUI')
+  workflow.addEdge('generateUI', 'saveProject')
+  workflow.addEdge('saveProject', '__end__')
+  
+  return workflow.compile()
+}
+
+// Main workflow runner - now powered by LangGraph!
+export async function runWorkflow(
+  idea: string,
+  onProgress: ProgressCallback,
+  chatHistory?: ChatMessage[]
+): Promise<{ success: boolean; projectId?: string; error?: string }> {
+  const projectId = nanoid()
+  console.log('🦜️🔗 Starting LangGraph workflow for project:', projectId)
+  
+  try {
+    const workflow = createWorkflow()
+    
+    const result = await workflow.invoke({
+      idea,
+      chatHistory: chatHistory || [],
+      projectId,
+      onProgress
+    })
+    
+    if (result.error) {
+      throw new Error(result.error)
+    }
+    
+    return { success: true, projectId }
+  } catch (error) {
+    console.error('Workflow error:', error)
+    onProgress('unknown', 'error', error instanceof Error ? error.message : 'Unknown error')
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error occurred' 
+    }
+  }
+}
+
+// Helper functions (unchanged)
+
 // Process idea into structured format for React app
 async function processIdea(idea: string): Promise<ProjectIdea> {
   const response = await llm.invoke([
-    new SystemMessage(
-      'Extract a project title and clean description for a REACT WEB APPLICATION from the user\'s idea. ' +
-      'The title should be concise (3-5 words). The description should clearly describe what this React app will do.'
-    ),
+    new SystemMessage('Generate a clear title and description for this React project idea.'),
     new HumanMessage(`Create a React web application for: ${idea}`),
   ])
 
   const content = response.content as string
   const lines = content.split('\n').filter(line => line.trim())
-  const title = lines[0]?.replace(/^(Title:|#)\s*/i, '').trim() || 'Untitled React App'
+  
+  // Extract and clean the title
+  let title = lines[0]?.trim() || 'Untitled React App'
+  
+  // Remove common prefixes
+  title = title.replace(/^(Title:|Project Title:|#|##|###)\s*/i, '').trim()
+  
+  // Remove markdown formatting
+  title = title
+    .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold **text**
+    .replace(/\*(.*?)\*/g, '$1')     // Remove italic *text*
+    .replace(/`(.*?)`/g, '$1')       // Remove inline code `text`
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove links [text](url)
+    .replace(/^#+\s*/gm, '')         // Remove heading markers
+    .trim()
+  
+  // If title is empty or still contains just "Project Title", generate a better one
+  if (!title || title.toLowerCase() === 'project title' || title.length < 3) {
+    // Try to extract a meaningful title from the idea itself
+    const ideaWords = idea.trim().split(/\s+/)
+    if (ideaWords.length > 0) {
+      // Take first few words and capitalize properly
+      title = ideaWords.slice(0, 5).join(' ')
+      // Capitalize first letter
+      title = title.charAt(0).toUpperCase() + title.slice(1)
+      // Add "App" if it doesn't already contain it
+      if (!title.toLowerCase().includes('app') && !title.toLowerCase().includes('application')) {
+        title += ' App'
+      }
+    } else {
+      title = 'Untitled React App'
+    }
+  }
+  
+  // Ensure title isn't too long
+  if (title.length > 50) {
+    title = title.slice(0, 47) + '...'
+  }
+  
   const description = lines.slice(1).join(' ').replace(/^(Description:)\s*/i, '').trim() || idea
 
   return { title, description }
@@ -1433,7 +1721,7 @@ CODE RULES:
     code = code.trim()
     if (!code.includes('const App =')) {
       // Try to find the main component name and add assignment
-      const componentMatch = code.match(/(?:function|const)\s+(\w+)\s*(?:\(|=)/)
+      const componentMatch = code.match(/(?:function|const)\s+(\w+)\s*[=(]/)
       if (componentMatch) {
         code += `\n\nconst App = ${componentMatch[1]};\nwindow.App = App;`
       }
@@ -1446,144 +1734,6 @@ CODE RULES:
   return code
 }
 
-// Main workflow runner
-export async function runWorkflow(
-  idea: string,
-  onProgress: ProgressCallback,
-  chatHistory?: ChatMessage[]
-): Promise<{ success: boolean; projectId?: string; error?: string }> {
-  const projectId = nanoid()
-  console.log('Starting workflow for project:', projectId)
-  if (chatHistory) {
-    console.log('Chat history provided:', chatHistory.length, 'messages')
-  }
-  
-  try {
-    // Step 1: Process idea
-    console.log('Step 1: Processing idea...')
-    onProgress('IdeaInputNode', 'in-progress', 'Processing your idea...')
-    const projectIdea = await processIdea(idea)
-    console.log('Idea processed:', projectIdea)
-    onProgress('IdeaInputNode', 'success')
+// Helper functions (extractTitle, cleanProjectTitle, etc.)
 
-    // Step 2: Generate PRD
-    console.log('Step 2: Generating PRD...')
-    onProgress('PRDGeneratorNode', 'in-progress', 'Generating PRD...')
-    const prd = await generatePRD(projectIdea)
-    console.log('PRD generated:', { problem: prd.problem.substring(0, 100) + '...' })
-    onProgress('PRDGeneratorNode', 'success')
-
-    // Step 3: Generate checklist
-    console.log('Step 3: Generating checklist...')
-    onProgress('ChecklistGeneratorNode', 'in-progress', 'Creating development checklist...')
-    const checklist = await generateChecklist(prd)
-    console.log('Checklist generated:', checklist.length, 'items')
-    onProgress('ChecklistGeneratorNode', 'success')
-
-    // Step 3.5: Generate brainlift (optional)
-    console.log('Step 3.5: Generating brainlift...')
-    onProgress('BrainliftNode', 'in-progress', 'Documenting assumptions and decisions...')
-    const brainlift = await generateBrainlift(projectIdea, prd)
-    console.log('Brainlift result:', brainlift ? 'generated' : 'skipped')
-    if (brainlift) {
-      onProgress('BrainliftNode', 'success')
-    }
-
-    // Step 4: Generate UI plan
-    console.log('Step 4: Planning UI...')
-    onProgress('UIPlannerNode', 'in-progress', 'Planning UI components...')
-    const uiPlan = await generateUIPlan(projectIdea, prd)
-    console.log('UI plan generated:', { components: uiPlan.components })
-    onProgress('UIPlannerNode', 'success')
-
-    // Step 5: Determine UI strategy
-    console.log('Step 5: Determining UI strategy...')
-    onProgress('UIStrategyDecisionNode', 'in-progress', 'Determining UI generation strategy...')
-    const uiStrategy = determineUIStrategy(uiPlan)
-    console.log('UI strategy determined:', uiStrategy)
-    onProgress('UIStrategyDecisionNode', 'success')
-
-    // Step 6: Generate UI code or v0 prompt
-    console.log('Step 6: Generating UI...')
-    let uiCode: string | undefined
-    let uiFiles: UIFile[] | undefined
-    let v0Prompt: any | undefined
-    let allValidationIssues: FileValidationIssues[] = []
-    
-    if (uiStrategy === 'gpt') {
-      console.log('Generating GPT UI code...')
-      onProgress('GPTUICodeNode', 'in-progress', 'Generating UI code...')
-      
-      // Try to generate multiple files first
-      try {
-        const generateResult = await generateUIFiles(projectIdea, uiPlan, onProgress)
-        uiFiles = generateResult.files
-        allValidationIssues = generateResult.validationIssues
-        
-        console.log('UI files generated:', uiFiles.length, 'files')
-        console.log('File details:', uiFiles.map(f => ({
-          filename: f.filename,
-          type: f.type,
-          length: f.content.length,
-          hasWindowAssignment: f.content.includes('window.')
-        })))
-        
-        if (allValidationIssues.length > 0) {
-          console.warn('Validation issues found:', allValidationIssues)
-        }
-        
-        // Validate that we have an App.tsx file
-        const hasAppFile = uiFiles.some(f => f.type === 'main' || f.filename.toLowerCase().includes('app'))
-        if (!hasAppFile) {
-          console.error('No App.tsx file found in generated files!')
-        }
-        
-        // Also generate single file for backwards compatibility
-        // Combine all files into one for legacy support
-        uiCode = uiFiles.map(file => `// File: ${file.filename}\n${file.content}`).join('\n\n')
-      } catch (error) {
-        console.error('Multi-file generation failed, falling back to single file:', error)
-        // Fall back to single file generation
-        uiCode = await generateUICode(projectIdea, uiPlan)
-        console.log('UI code generated (single file):', uiCode ? uiCode.length + ' characters' : 'none')
-      }
-      
-      onProgress('GPTUICodeNode', 'success')
-    } else {
-      console.log('Generating v0 prompt...')
-      onProgress('V0PromptNode', 'in-progress', 'Generating v0 prompt...')
-      v0Prompt = await generateV0Prompt(projectIdea, uiPlan)
-      console.log('v0 prompt generated:', v0Prompt)
-      onProgress('V0PromptNode', 'success')
-    }
-
-    // Save project to storage
-    console.log('Saving project to storage...')
-    
-    const projectFiles: Partial<ProjectFiles> = {
-      idea,
-      prd,
-      checklist,
-      brainlift: brainlift || undefined,
-      uiPlan,
-      uiStrategy,
-      uiCode,
-      uiFiles,
-      uiValidationIssues: allValidationIssues.length > 0 ? allValidationIssues : undefined,
-      v0Prompt,
-      chatHistory,
-    }
-
-    await storage.saveProject(projectId, projectFiles, projectIdea.title)
-    console.log('Project saved successfully:', projectId)
-
-    return { success: true, projectId }
-  } catch (error) {
-    console.error('Workflow error:', error)
-    onProgress('unknown', 'error', error instanceof Error ? error.message : 'Unknown error')
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error occurred' 
-    }
-  }
-} 
+// ... existing code ... 

@@ -5,6 +5,33 @@ import { format } from 'date-fns'
 import { ipc } from '../lib/ipc'
 import toast from 'react-hot-toast'
 
+// Helper function to clean markdown and format project titles
+function cleanProjectTitle(title: string): string {
+  if (!title) return 'Untitled Project'
+  
+  // Remove markdown formatting
+  let cleanTitle = title
+    .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold **text**
+    .replace(/\*(.*?)\*/g, '$1')     // Remove italic *text*
+    .replace(/`(.*?)`/g, '$1')       // Remove inline code `text`
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove links [text](url)
+    .replace(/^#+\s*/gm, '')         // Remove heading markers
+    .replace(/^(Title:|Project Title:)\s*/i, '') // Remove title prefixes
+    .trim()
+  
+  // Handle edge cases
+  if (!cleanTitle || cleanTitle.toLowerCase() === 'project title' || cleanTitle.length < 3) {
+    return 'Untitled Project'
+  }
+  
+  // Ensure title isn't too long
+  if (cleanTitle.length > 40) {
+    return cleanTitle.slice(0, 37) + '...'
+  }
+  
+  return cleanTitle
+}
+
 export default function Sidebar() {
   const { projects, selectedProjectId, selectProject, setProjectData, setCurrentTab, deleteProject, setProjects } = useStore()
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null)
@@ -42,7 +69,8 @@ export default function Sidebar() {
   const handleDeleteProject = async (projectId: string, projectTitle: string, e: React.MouseEvent) => {
     e.stopPropagation() // Prevent project selection
     
-    if (!confirm(`Are you sure you want to delete "${projectTitle}"? This action cannot be undone.`)) {
+    const cleanedTitle = cleanProjectTitle(projectTitle)
+    if (!confirm(`Are you sure you want to delete "${cleanedTitle}"? This action cannot be undone.`)) {
       return
     }
     
@@ -112,7 +140,7 @@ export default function Sidebar() {
                       <Folder className="w-4 h-4 flex-shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{project.title || 'Untitled Project'}</p>
+                      <p className="text-sm font-medium truncate">{cleanProjectTitle(project.title || 'Untitled Project')}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {format(new Date(project.created), 'MMM d, yyyy')}
                       </p>

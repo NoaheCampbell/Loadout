@@ -5,6 +5,33 @@ import PrdTab from './tabs/PrdTab'
 import ChecklistTab from './tabs/ChecklistTab'
 import UiTab from './tabs/UiTab'
 
+// Helper function to clean markdown and format project titles
+function cleanProjectTitle(title: string): string {
+  if (!title) return 'Untitled Project'
+  
+  // Remove markdown formatting
+  let cleanTitle = title
+    .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold **text**
+    .replace(/\*(.*?)\*/g, '$1')     // Remove italic *text*
+    .replace(/`(.*?)`/g, '$1')       // Remove inline code `text`
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove links [text](url)
+    .replace(/^#+\s*/gm, '')         // Remove heading markers
+    .replace(/^(Title:|Project Title:)\s*/i, '') // Remove title prefixes
+    .trim()
+  
+  // Handle edge cases
+  if (!cleanTitle || cleanTitle.toLowerCase() === 'project title' || cleanTitle.length < 3) {
+    return 'Untitled Project'
+  }
+  
+  // Ensure title isn't too long
+  if (cleanTitle.length > 50) {
+    return cleanTitle.slice(0, 47) + '...'
+  }
+  
+  return cleanTitle
+}
+
 const tabs = [
   { id: 'idea' as const, label: 'Idea', icon: Brain, color: 'purple' },
   { id: 'prd' as const, label: 'PRD', icon: FileText, color: 'blue' },
@@ -13,7 +40,7 @@ const tabs = [
 ]
 
 export default function Workspace() {
-  const { selectedProjectId, currentTab, setCurrentTab, currentProjectData } = useStore()
+  const { selectedProjectId, currentTab, setCurrentTab, currentProjectData, projects } = useStore()
 
   // Show new project form if no project selected
   if (!selectedProjectId) {
@@ -24,16 +51,17 @@ export default function Workspace() {
     )
   }
 
+  // Find the current project from the projects list
+  const currentProject = projects.find(p => p.id === selectedProjectId)
+  const projectTitle = currentProject ? cleanProjectTitle(currentProject.title) : 'Loading...'
+
   return (
     <div className="flex-1 flex flex-col">
       {/* Project Header */}
       <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="px-6 py-4">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-            {currentProjectData?.idea ? 
-              currentProjectData.idea.split('\n')[0].slice(0, 50) + 
-              (currentProjectData.idea.split('\n')[0].length > 50 ? '...' : '') : 
-              'New Project'}
+            {projectTitle}
           </h2>
         </div>
 
