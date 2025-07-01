@@ -105,7 +105,15 @@ async function isPortAvailable(port: number): Promise<boolean> {
 }
 
 function generateIndexHtml(files: UIFile[]): string {
-  const sortedFiles = [...files].sort((a, b) => {
+  // Filter only JavaScript files (exclude .md, .html, etc)
+  const jsFiles = files.filter(f => 
+    f.filename.endsWith('.js') || 
+    f.filename.endsWith('.jsx') || 
+    f.filename.endsWith('.ts') || 
+    f.filename.endsWith('.tsx')
+  )
+  
+  const sortedFiles = [...jsFiles].sort((a, b) => {
     if (a.type === 'main' || a.filename.toLowerCase().includes('app')) return 1
     if (b.type === 'main' || b.filename.toLowerCase().includes('app')) return -1
     return 0

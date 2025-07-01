@@ -76,16 +76,15 @@ export class StorageManager {
             .replace(/\//g, '_') // Replace forward slashes with underscores
             .trim();
           
-          // Ensure filename is not empty and has .tsx extension
-          if (!safeFilename || safeFilename === '.tsx') {
+          // Ensure filename is not empty
+          if (!safeFilename) {
             console.warn(`Skipping invalid filename: ${file.filename}`);
             continue;
           }
           
-          // Ensure .tsx extension
-          if (!safeFilename.endsWith('.tsx')) {
-            safeFilename = safeFilename.replace(/\.[^.]+$/, '') + '.tsx';
-          }
+          // Preserve original file extensions
+          // The workflow generates appropriate extensions (.js, .html, .md)
+          // so we should keep them as-is
           
           console.log(`Saving UI file: ${safeFilename} (original: ${file.filename})`);
           await fs.writeFile(path.join(uiPath, safeFilename), file.content);

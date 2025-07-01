@@ -128,8 +128,16 @@ function LocalhostPreview({ files, refreshKey }: { files: any[]; refreshKey: num
         // Stop any existing server
         await ipc.stopPreviewServer()
         
-        // Start the preview server with the files
-        const result = await ipc.startPreviewServer(files)
+        // Filter out non-JavaScript files before passing to preview server
+        const jsFiles = files.filter(f => 
+          f.filename.endsWith('.js') || 
+          f.filename.endsWith('.jsx') || 
+          f.filename.endsWith('.ts') || 
+          f.filename.endsWith('.tsx')
+        )
+        
+        // Start the preview server with only JavaScript files
+        const result = await ipc.startPreviewServer(jsFiles)
         
         if (mounted) {
           if (result.success && result.url) {
