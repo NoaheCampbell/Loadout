@@ -60,6 +60,7 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
     .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
     .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
     .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+    .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
     
     .m-2 { margin: 0.5rem; }
     .m-4 { margin: 1rem; }
@@ -106,15 +107,22 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
     .text-green-600 { color: #059669; }
     .text-red-500 { color: #ef4444; }
     .text-red-600 { color: #dc2626; }
+    .text-blue-300 { color: #93c5fd; }
+    .text-green-300 { color: #86efac; }
+    .text-red-300 { color: #fca5a5; }
     
     .bg-white { background-color: #ffffff; }
     .bg-gray-50 { background-color: #f9fafb; }
     .bg-gray-100 { background-color: #f3f4f6; }
     .bg-gray-200 { background-color: #e5e7eb; }
     .bg-gray-300 { background-color: #d1d5db; }
+    .bg-gray-500 { background-color: #6b7280; }
+    .bg-gray-600 { background-color: #4b5563; }
     .bg-gray-700 { background-color: #374151; }
     .bg-gray-800 { background-color: #1f2937; }
     .bg-gray-900 { background-color: #111827; }
+    .bg-black { background-color: #000000; }
+    .bg-opacity-50 { background-color: rgba(0, 0, 0, 0.5); }
     .bg-blue-50 { background-color: #eff6ff; }
     .bg-blue-100 { background-color: #dbeafe; }
     .bg-blue-500 { background-color: #3b82f6; }
@@ -167,6 +175,7 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
     .h-full { height: 100%; }
     .h-screen { height: 100vh; }
     .min-h-screen { min-height: 100vh; }
+    .min-h-full { min-height: 100%; }
     
     /* Position */
     .relative { position: relative; }
@@ -176,6 +185,13 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
     .bottom-0 { bottom: 0; }
     .left-0 { left: 0; }
     .right-0 { right: 0; }
+    .bottom-4 { bottom: 1rem; }
+    .right-4 { right: 1rem; }
+    
+    /* Z-Index */
+    .z-10 { z-index: 10; }
+    .z-40 { z-index: 40; }
+    .z-50 { z-index: 50; }
     
     /* Display */
     .block { display: block; }
@@ -185,22 +201,28 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
     .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .flex { display: flex; }
     
     /* Overflow */
     .overflow-hidden { overflow: hidden; }
     .overflow-auto { overflow: auto; }
     .overflow-y-auto { overflow-y: auto; }
     
+    /* Opacity */
+    .opacity-90 { opacity: 0.9; }
+    
     /* Hover states */
     .hover\\:bg-gray-100:hover { background-color: #f3f4f6; }
     .hover\\:bg-gray-200:hover { background-color: #e5e7eb; }
     .hover\\:bg-gray-700:hover { background-color: #374151; }
     .hover\\:bg-blue-600:hover { background-color: #2563eb; }
+    .hover\\:bg-blue-700:hover { background-color: #1d4ed8; }
     .hover\\:text-white:hover { color: #ffffff; }
     
     /* Transitions */
     .transition { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
     .transition-colors { transition-property: background-color, border-color, color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+    .transition-opacity { transition-property: opacity; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
     
     /* Custom styles */
     button, [role="button"] {
@@ -216,12 +238,36 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
       font-size: inherit;
     }
     
+    .outline-none { outline: none; }
+    .bg-transparent { background-color: transparent; }
+    .flex-1 { flex: 1; }
+    .items-center { align-items: center; }
+    .gap-2 { gap: 0.5rem; }
+    .mr-2 { margin-right: 0.5rem; }
+    
     svg { display: inline-block; vertical-align: middle; }
     .cursor-pointer { cursor: pointer; }
   </style>
 </head>
 <body>
-  <div id="root">
+  <!-- URL Bar -->
+  <div id="urlBar" class="fixed top-0 left-0 right-0 bg-white border-b border-gray-300 p-2 flex items-center gap-2 z-50 shadow-sm">
+    <button id="backBtn" class="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded">←</button>
+    <button id="forwardBtn" class="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded">→</button>
+    <div class="flex-1 flex items-center bg-gray-100 rounded px-3 py-1">
+      <span class="text-gray-500 text-sm mr-2">preview://</span>
+      <input 
+        id="urlInput" 
+        type="text" 
+        class="flex-1 bg-transparent outline-none text-sm"
+        value="home"
+        placeholder="Enter route..."
+      />
+    </div>
+    <button id="goBtn" class="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600">Go</button>
+  </div>
+  
+  <div id="root" style="padding-top: 60px; min-height: 100vh;">
     <div class="p-4 text-center text-gray-500">Loading preview...</div>
   </div>
   <script>
@@ -231,6 +277,41 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
         '<div class="error">Error: ' + msg + '</div>';
       return true;
     };
+    
+    // Intercept form submissions to prevent navigation
+    document.addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      // Gather form data
+      const formData = new FormData(e.target);
+      const data = {};
+      for (let [key, value] of formData.entries()) {
+        data[key] = value;
+      }
+      
+      console.log('Form submission intercepted:', {
+        action: e.target.action || 'none',
+        method: e.target.method || 'GET',
+        data: data
+      });
+      
+      // Show a toast or notification
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg transition-opacity z-50';
+      toast.textContent = 'Form submitted successfully! (preview mode)';
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 2000);
+      
+      // Trigger a custom event that components can listen to
+      const event = new CustomEvent('formSubmitted', { 
+        detail: { formData: data, form: e.target }
+      });
+      window.dispatchEvent(event);
+    });
 
     // Simple createElement function
     function h(tag, props, ...children) {
@@ -275,6 +356,108 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
     // Basic React-like API with hooks
     let stateIndex = 0;
     const stateStore = [];
+    
+    // Simple routing system
+    window.currentRoute = 'home'; // Default route
+    const routes = new Map();
+    const routeHistory = ['home'];
+    let historyIndex = 0;
+    const routeChangeCallbacks = [];
+    
+    window.Router = {
+      register: (path, component) => {
+        routes.set(path, component);
+      },
+      navigate: (path) => {
+        const previousRoute = window.currentRoute;
+        window.currentRoute = path;
+        console.log('Navigating to:', path);
+        
+        // Update URL bar
+        const urlInput = document.getElementById('urlInput');
+        if (urlInput) {
+          urlInput.value = path;
+        }
+        
+        // Add to history
+        if (routeHistory[historyIndex] !== path) {
+          routeHistory.splice(historyIndex + 1);
+          routeHistory.push(path);
+          historyIndex = routeHistory.length - 1;
+        }
+        
+        // Trigger re-render
+        const root = document.getElementById('root');
+        if (root && window.App) {
+          stateIndex = 0;
+          root.innerHTML = '';
+          try {
+            const element = window.App();
+            if (element) {
+              root.appendChild(element);
+            }
+            
+            // Update debug panel
+            const debugPanel = document.querySelector('.debug-panel');
+            if (debugPanel) {
+              debugPanel.innerHTML = 
+                '<div class="font-semibold mb-1">Debug Info</div>' +
+                '<div>Route: <span class="text-blue-300">' + (window.currentRoute || 'home') + '</span></div>';
+            }
+          } catch (err) {
+            console.error('Re-render error:', err);
+          }
+        }
+        
+        // Notify route change listeners
+        routeChangeCallbacks.forEach(callback => {
+          try {
+            callback(path, previousRoute);
+          } catch (err) {
+            console.error('Error in route change callback:', err);
+          }
+        });
+      },
+      getCurrentRoute: () => window.currentRoute,
+      getComponent: (path) => routes.get(path),
+      back: () => {
+        if (historyIndex > 0) {
+          historyIndex--;
+          window.Router.navigate(routeHistory[historyIndex]);
+        }
+      },
+      forward: () => {
+        if (historyIndex < routeHistory.length - 1) {
+          historyIndex++;
+          window.Router.navigate(routeHistory[historyIndex]);
+        }
+      },
+      onRouteChange: (callback) => {
+        if (typeof callback === 'function') {
+          routeChangeCallbacks.push(callback);
+          // Return unsubscribe function
+          return () => {
+            const index = routeChangeCallbacks.indexOf(callback);
+            if (index > -1) {
+              routeChangeCallbacks.splice(index, 1);
+            }
+          };
+        }
+      }
+    };
+    
+    // Global app state (for sharing data between routes)
+    window.AppState = {
+      data: {},
+      set: (key, value) => {
+        window.AppState.data[key] = value;
+        // Trigger re-render
+        window.Router.navigate(window.currentRoute);
+      },
+      get: (key) => {
+        return window.AppState.data[key];
+      }
+    };
     
     window.React = {
       createElement: h,
@@ -446,31 +629,103 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
         // Debug what components are available
         console.log('Available window properties:', Object.keys(window).filter(k => k[0] === k[0].toUpperCase() && typeof window[k] === 'function'));
         
-        // Add a small delay to ensure script execution completes
-        setTimeout(() => {
-          // Debug: log what's available
-          console.log('After delay - Looking for component. window.App:', window.App, 'window.Default:', window.Default, 'window.Component:', window.Component);
-          console.log('All components:', Object.keys(window).filter(k => k[0] === k[0].toUpperCase() && typeof window[k] === 'function'));
+              // Add a small delay to ensure script execution completes
+      setTimeout(() => {
+        // Debug: log what's available
+        console.log('After delay - Looking for component. window.App:', window.App, 'window.Default:', window.Default, 'window.Component:', window.Component);
+        console.log('All components:', Object.keys(window).filter(k => k[0] === k[0].toUpperCase() && typeof window[k] === 'function'));
+        
+        // Find and render the component
+        const component = window.App || window.Default || window.Component;
+        
+        if (component && typeof component === 'function') {
+          const root = document.getElementById('root');
           
-          // Find and render the component
-          const component = window.App || window.Default || window.Component;
-          
-          if (component && typeof component === 'function') {
-            const root = document.getElementById('root');
+          // Add debug info panel
+          const renderWithDebug = () => {
             root.innerHTML = '';
             try {
-              // Reset state index before initial render
+              // Reset state index before render
               stateIndex = 0;
               const element = component();
               if (element) {
                 root.appendChild(element);
               }
+              
+              // Add debug panel if in development
+              const debugPanel = document.createElement('div');
+              debugPanel.className = 'fixed bottom-4 left-4 bg-gray-900 text-white text-xs p-3 rounded shadow-lg z-40 opacity-90';
+              debugPanel.innerHTML = 
+                '<div class="font-semibold mb-1">Debug Info</div>' +
+                '<div>Route: <span class="text-blue-300">' + (window.currentRoute || 'home') + '</span></div>';
+              document.body.appendChild(debugPanel);
+              
+              // Remove old debug panel if exists
+              const oldDebug = document.querySelector('.debug-panel');
+              if (oldDebug) oldDebug.remove();
+              debugPanel.classList.add('debug-panel');
+              
             } catch (renderError) {
               console.error('Error rendering component:', renderError);
-              document.getElementById('root').innerHTML = 
+              root.innerHTML = 
                 '<div class="error">Error rendering component: ' + renderError.message + '</div>';
             }
-          } else {
+          };
+          
+          // Initial render
+          renderWithDebug();
+          
+          // Set up URL bar after initial render
+          const setupUrlBar = () => {
+            const urlInput = document.getElementById('urlInput');
+            const goBtn = document.getElementById('goBtn');
+            const backBtn = document.getElementById('backBtn');
+            const forwardBtn = document.getElementById('forwardBtn');
+            
+            if (urlInput && goBtn) {
+              // Handle Enter key in URL input
+              urlInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                  const route = urlInput.value.trim();
+                  if (route) {
+                    window.Router.navigate(route);
+                  }
+                }
+              });
+              
+              // Handle Go button
+              goBtn.addEventListener('click', function() {
+                const route = urlInput.value.trim();
+                if (route) {
+                  window.Router.navigate(route);
+                }
+              });
+            }
+            
+            // Update back/forward buttons
+            if (backBtn) {
+              backBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                window.Router.back();
+              });
+            }
+            
+            if (forwardBtn) {
+              forwardBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                window.Router.forward();
+              });
+            }
+          };
+          
+          setupUrlBar();
+          
+          // Log available routes
+          console.log('Router initialized. Current route:', window.Router.getCurrentRoute());
+          console.log('You can navigate using window.Router.navigate("routeName")');
+          console.log('Example routes: "home", "products", "about", "settings", etc.');
+          
+        } else {
             // Show more debugging info
             document.getElementById('root').innerHTML = 
               '<div class="error">' +
@@ -499,13 +754,13 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
   return (
     <iframe
       srcDoc={htmlContent}
-      className="w-full border-0 bg-white"
+      className="w-full h-full border-0 bg-white"
       style={{ 
-        height: '900px',
+        minHeight: '600px',
         display: 'block'
       }}
       title="UI Preview"
-      sandbox="allow-scripts"
+      sandbox="allow-scripts allow-forms allow-same-origin allow-modals allow-popups"
     />
   )
 }
@@ -1111,8 +1366,8 @@ window.App = (() => {
                     )}
                   </div>
                 ) : (
-                  <div className="flex flex-col">
-                    <div className="relative bg-gray-50" style={{ height: '900px' }}>
+                  <div className="flex flex-col h-full">
+                    <div className="relative flex-1 bg-gray-50">
                       <PreviewIframe code={processedCode} refreshKey={refreshKey} />
                       {/* Refresh button */}
                       <button

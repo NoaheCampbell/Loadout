@@ -286,7 +286,7 @@ async function generateComponentFile(
         return `Create a navigation/header component with:
 - Brand/logo area (use text-2xl font-bold)
 - Navigation items relevant to "${projectContext.title}" (use hover:text-blue-600)
-- User account area with avatar/dropdown
+- Settings or preferences dropdown (NO user accounts)
 - Responsive mobile design (hidden md:flex for desktop items)
 - Styled with Tailwind: bg-white shadow-md, proper padding, flex layout
 - Any search or action buttons that make sense for this app`
@@ -315,16 +315,31 @@ async function generateComponentFile(
 - Content area for "${projectContext.title}" functionality
 - Appropriate action buttons (styled with Tailwind button classes)
 - MUST be hidden by default (useState(false))
-- Centered positioning (flex items-center justify-center)`
+- Centered positioning (flex items-center justify-center)
+- Focus on feature-specific modals (settings, confirmation, detail views)
+- NO authentication or login modals`
       
       case 'form':
         return `Create a form component with:
-- Input fields relevant to "${projectContext.title}"
+- Input fields relevant to "${projectContext.title}" (NO password fields)
 - Proper Tailwind form styling (border rounded px-3 py-2 focus:outline-none focus:ring-2)
 - Validation states (border-red-500 for errors, border-green-500 for success)
 - Submit button (bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700)
 - Clear labels (text-sm font-medium text-gray-700) and helper text
-- Proper spacing between form elements (space-y-4)`
+- Proper spacing between form elements (space-y-4)
+- Handle form submission with preventDefault
+- Example submit handler for data forms:
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData);
+    
+    // Process form data
+    console.log('Form submitted:', data);
+    // Save data or navigate
+    window.AppState.set('formData', data);
+    window.Router.navigate('success');
+  }`
       
       case 'datadisplay':
         return `Create a data display component (list/table/grid) with:
@@ -357,7 +372,30 @@ async function generateComponentFile(
 - MUST end with: window.App = App;
 - Use proper Tailwind layout classes (min-h-screen, flex, grid, etc.)
 - Apply appropriate background colors and spacing
-- Ensure responsive design with proper breakpoints`
+- Ensure responsive design with proper breakpoints
+
+ROUTING SUPPORT:
+- You can use window.Router.navigate('routeName') to change pages
+- Use window.Router.getCurrentRoute() to get current route
+- Use window.Router.onRouteChange(callback) to listen for route changes
+- Use window.AppState.set(key, value) to store application state
+- Use window.AppState.get(key) to retrieve application state
+- Show different components based on route
+Example: 
+  const route = window.Router.getCurrentRoute();
+  if (route === 'products') {
+    return React.createElement(window.ProductList);
+  } else if (route === 'about') {
+    return React.createElement(window.AboutSection);
+  }
+  
+  // To listen for route changes:
+  React.useEffect(() => {
+    const unsubscribe = window.Router.onRouteChange((newRoute, oldRoute) => {
+      console.log('Route changed from', oldRoute, 'to', newRoute);
+    });
+    return unsubscribe; // Cleanup
+  }, []);`
       
       default:
         return `Create a ${componentName} component that:
@@ -407,6 +445,21 @@ Rules:
 - Minimum 80-150 lines of actual component code
 - End with: window.${componentName} = ${componentName};
 - NO destructuring of React (no const {useState} = React)
+
+CRITICAL - NO AUTHENTICATION:
+- DO NOT create login, signup, or authentication screens
+- DO NOT include password fields or login forms
+- DO NOT implement user authentication logic
+- DO NOT create user registration or sign-in flows
+- Focus on the core functionality without authentication
+
+NAVIGATION & STATE:
+- Use window.Router.navigate('routeName') to change pages
+- Use window.Router.getCurrentRoute() to get current route
+- Use window.Router.onRouteChange(callback) to listen for route changes
+- Use window.AppState.set(key, value) to store global data
+- Use window.AppState.get(key) to retrieve global data
+- Navigate between functional pages like 'home', 'about', 'products', 'contact', etc.
 ${componentType === 'container' ? `- When using other components, reference them as window.ComponentName
 - Example: React.createElement(window.${projectContext.otherComponents[0] || 'Header'})
 - Arrange components according to: ${projectContext.layout}` : ''}
@@ -576,6 +629,24 @@ function validateGeneratedCode(code: string, componentName: string): { valid: bo
     /^\/\/ This is a/m,
     /^\/\/ Here's/m
   ]
+  
+  // Check for authentication-related content
+  const authPatterns = [
+    /\b(login|signin|sign-in|authenticate|auth)\b/i,
+    /\b(logout|signout|sign-out)\b/i,
+    /\b(signup|sign-up|register|registration)\b/i,
+    /\b(password|credential|token)\b/i,
+    /\b(user authentication|user auth)\b/i,
+    /input.*type.*password/i,
+    /LoginForm|LoginModal|SignupForm|RegisterForm|AuthForm/,
+    /handleLogin|handleSignup|handleAuth|handleRegister/i
+  ]
+  
+  for (const pattern of authPatterns) {
+    if (pattern.test(code)) {
+      issues.push(`Contains authentication-related content: "${pattern.source}"`)
+    }
+  }
   
   for (const pattern of explanatoryPatterns) {
     if (pattern.test(code)) {
