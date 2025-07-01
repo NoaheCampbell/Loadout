@@ -269,7 +269,7 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
             <button
               onClick={handleStartChat}
               disabled={!idea.trim()}
-              className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:cursor-not-allowed"
             >
               <MessageCircle className="w-5 h-5" />
               Refine Idea with AI
@@ -295,7 +295,7 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
           <button
             onClick={handleGenerate}
             disabled={isGenerating || chatMessages.length < 2}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 disabled:cursor-not-allowed"
           >
             {isGenerating ? (
               <>
@@ -397,7 +397,7 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
           <button
             onClick={handleSendMessage}
             disabled={!chatInput.trim() || isWaitingForResponse}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors disabled:cursor-not-allowed"
+            className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 disabled:cursor-not-allowed"
           >
             <Send className="w-5 h-5" />
           </button>

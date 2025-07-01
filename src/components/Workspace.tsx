@@ -6,10 +6,10 @@ import ChecklistTab from './tabs/ChecklistTab'
 import UiTab from './tabs/UiTab'
 
 const tabs = [
-  { id: 'idea' as const, label: 'Idea', icon: Brain },
-  { id: 'prd' as const, label: 'PRD', icon: FileText },
-  { id: 'checklist' as const, label: 'Checklist', icon: CheckSquare },
-  { id: 'ui' as const, label: 'UI', icon: Palette },
+  { id: 'idea' as const, label: 'Idea', icon: Brain, color: 'purple' },
+  { id: 'prd' as const, label: 'PRD', icon: FileText, color: 'blue' },
+  { id: 'checklist' as const, label: 'Checklist', icon: CheckSquare, color: 'green' },
+  { id: 'ui' as const, label: 'UI', icon: Palette, color: 'pink' },
 ]
 
 export default function Workspace() {
@@ -41,15 +41,30 @@ export default function Workspace() {
         <div className="flex gap-1 px-6">
           {tabs.map((tab) => {
             const Icon = tab.icon
+            const isActive = currentTab === tab.id
+            
+            const colorClasses = {
+              purple: isActive 
+                ? 'bg-purple-500 dark:bg-purple-600 text-white border-purple-400 dark:border-purple-500' 
+                : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 border-purple-200 dark:border-purple-800',
+              blue: isActive 
+                ? 'bg-blue-500 dark:bg-blue-600 text-white border-blue-400 dark:border-blue-500' 
+                : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 border-blue-200 dark:border-blue-800',
+              green: isActive 
+                ? 'bg-green-500 dark:bg-green-600 text-white border-green-400 dark:border-green-500' 
+                : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 border-green-200 dark:border-green-800',
+              pink: isActive 
+                ? 'bg-pink-500 dark:bg-pink-600 text-white border-pink-400 dark:border-pink-500' 
+                : 'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300 hover:bg-pink-200 dark:hover:bg-pink-900/50 border-pink-200 dark:border-pink-800',
+            }
+            
             return (
               <button
                 key={tab.id}
                 onClick={() => setCurrentTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${
-                  currentTab === tab.id
-                    ? 'bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 border-t border-l border-r border-gray-200 dark:border-gray-700 -mb-px'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
-                }`}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg transition-all duration-200 border ${
+                  colorClasses[tab.color as keyof typeof colorClasses]
+                } ${isActive ? 'shadow-lg -mb-px font-semibold' : ''}`}
               >
                 <Icon className="w-4 h-4" />
                 <span className="text-sm font-medium">{tab.label}</span>

@@ -73,7 +73,7 @@ export default function Sidebar() {
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <button
           onClick={handleNewProject}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg shadow-sm hover:shadow-md transition-all duration-200 font-medium"
         >
           <Plus className="w-4 h-4" />
           New Project
@@ -99,10 +99,10 @@ export default function Sidebar() {
                   key={project.id}
                   onClick={() => handleSelectProject(project.id)}
                   disabled={deletingProjectId === project.id}
-                  className={`w-full text-left px-3 py-2 rounded-lg transition-colors group relative ${
+                  className={`w-full text-left px-3 py-2.5 rounded-lg transition-all duration-200 group relative ${
                     selectedProjectId === project.id
-                      ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      ? 'bg-blue-500 dark:bg-blue-600 text-white shadow-sm'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 hover:shadow-sm'
                   } ${deletingProjectId === project.id ? 'opacity-50' : ''}`}
                 >
                   <div className="flex items-center gap-2">
