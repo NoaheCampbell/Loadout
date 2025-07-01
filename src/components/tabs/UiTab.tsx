@@ -5,11 +5,77 @@ import toast from 'react-hot-toast'
 import Editor from 'react-simple-code-editor'
 import { highlight, languages } from 'prismjs'
 import 'prismjs/components/prism-jsx'
+import 'prismjs/components/prism-javascript'
+import 'prismjs/components/prism-typescript'
+import 'prismjs/components/prism-tsx'
 import 'prismjs/themes/prism-tomorrow.css'
 import { ipc } from '../../lib/ipc'
 import type { GenerationProgress } from '../../types'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
+
+// Custom styles for better syntax highlighting
+const syntaxStyles = `
+  .token.comment { color: #6A9955; }
+  .token.prolog { color: #6A9955; }
+  .token.doctype { color: #6A9955; }
+  .token.cdata { color: #6A9955; }
+  
+  .token.punctuation { color: #D4D4D4; }
+  
+  .token.property { color: #9CDCFE; }
+  .token.tag { color: #569CD6; }
+  .token.boolean { color: #569CD6; }
+  .token.number { color: #B5CEA8; }
+  .token.constant { color: #9CDCFE; }
+  .token.symbol { color: #B5CEA8; }
+  .token.deleted { color: #CE9178; }
+  
+  .token.selector { color: #D7BA7D; }
+  .token.attr-name { color: #9CDCFE; }
+  .token.string { color: #CE9178; }
+  .token.char { color: #CE9178; }
+  .token.builtin { color: #CE9178; }
+  .token.inserted { color: #CE9178; }
+  
+  .token.operator { color: #D4D4D4; }
+  .token.entity { color: #569CD6; }
+  .token.url { color: #3794ff; }
+  .language-css .token.string { color: #CE9178; }
+  .style .token.string { color: #CE9178; }
+  
+  .token.atrule { color: #C586C0; }
+  .token.attr-value { color: #CE9178; }
+  .token.keyword { color: #C586C0; }
+  
+  .token.function { color: #DCDCAA; }
+  .token.class-name { color: #4EC9B0; }
+  
+  .token.regex { color: #D16969; }
+  .token.important { color: #569cd6; }
+  .token.variable { color: #9CDCFE; }
+  
+  /* Ensure perfect line height alignment */
+  .npm__react-simple-code-editor__textarea {
+    line-height: 24px !important;
+    font-size: 14px !important;
+  }
+  
+  pre.npm__react-simple-code-editor__pre {
+    line-height: 24px !important;
+    font-size: 14px !important;
+    margin: 0 !important;
+    padding: 20px 0 !important;
+  }
+`;
+
+// Inject custom styles
+if (typeof document !== 'undefined') {
+  const styleElement = document.getElementById('prism-custom-styles') || document.createElement('style');
+  styleElement.id = 'prism-custom-styles';
+  styleElement.textContent = syntaxStyles;
+  document.head.appendChild(styleElement);
+}
 
 function LocalhostPreview({ files, refreshKey }: { files: any[]; refreshKey: number }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -428,8 +494,6 @@ Generated on: ${new Date().toLocaleString()}
     }
   }
 
-
-
   // Get combined code for copying to clipboard
   const getCombinedCode = (): string => {
     // If we have multiple UI files, combine them
@@ -452,29 +516,42 @@ Generated on: ${new Date().toLocaleString()}
   };
 
   const CodeEditor = ({ value, className = '', style = {} }: { value: string; className?: string; style?: React.CSSProperties }) => {
-    const lineCount = value.split('\n').length
-    const lineNumbers = Array.from({ length: lineCount }, (_, i) => i + 1).join('\n')
-
+    const highlightedCode = useMemo(() => highlightCode(value), [value])
+    
     return (
-      <div className="flex h-full">
-        <div className="text-gray-500 dark:text-gray-600 text-right pr-4 pt-5 select-none font-mono text-sm">
-          <pre>{lineNumbers}</pre>
-        </div>
-        <div className="flex-1">
-          <Editor
-            value={value}
-            onValueChange={() => {}} // Read-only
-            highlight={highlightCode}
-            padding={20}
-            disabled
-            textareaClassName="outline-none"
-            className={`font-mono text-sm ${className}`}
-            style={{
-              fontFamily: '"Fira code", "Fira Mono", monospace',
-              minHeight: '100%',
-              ...style
-            }}
-          />
+      <div className="h-full bg-gray-900 dark:bg-gray-950 overflow-auto relative">
+        <div className="flex min-h-full">
+          {/* Line numbers column */}
+          <div className="flex-shrink-0 select-none sticky left-0 bg-gray-900 dark:bg-gray-950 z-10 border-r border-gray-800 dark:border-gray-900">
+            <pre 
+              className="text-gray-500 dark:text-gray-600 text-right px-4 m-0"
+              style={{ 
+                fontSize: '14px',
+                fontFamily: '"Fira Code", "Fira Mono", Consolas, monospace',
+                lineHeight: '1.5rem',
+                paddingTop: '20px',
+                paddingBottom: '20px'
+              }}
+            >
+              {value.split('\n').map((_, i) => `${i + 1}\n`).join('')}
+            </pre>
+          </div>
+          
+          {/* Code content */}
+          <div className="flex-1 overflow-x-auto">
+            <pre 
+              className="m-0 p-5 pl-5"
+              style={{ 
+                fontSize: '14px',
+                fontFamily: '"Fira Code", "Fira Mono", Consolas, monospace',
+                lineHeight: '1.5rem',
+                color: '#D4D4D4',
+                tabSize: 2
+              }}
+            >
+              <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
+            </pre>
+          </div>
         </div>
       </div>
     )
@@ -646,7 +723,7 @@ Generated on: ${new Date().toLocaleString()}
                     {showRawCode && (
                       <div className="space-y-2">
                         <h4 className="font-medium">Raw Generated Code:</h4>
-                        <div className="h-96 overflow-auto border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900">
+                        <div className="h-96 overflow-auto border border-gray-200 dark:border-gray-700 rounded-lg">
                           <CodeEditor value={currentProjectData.uiCode || ''} />
                         </div>
                       </div>
@@ -756,7 +833,7 @@ Generated on: ${new Date().toLocaleString()}
                           </div>
                         </div>
                       </div>
-                      <div className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
+                      <div className="flex-1 overflow-auto">
                         <CodeEditor 
                           value={
                             currentProjectData.uiFiles.find(f => f.filename === (selectedFile || currentProjectData.uiFiles![0].filename))?.content || ''
@@ -766,7 +843,7 @@ Generated on: ${new Date().toLocaleString()}
                     </div>
                   </>
                 ) : (
-                  <div className="w-full h-full overflow-auto bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+                  <div className="w-full h-full overflow-auto border-t border-gray-200 dark:border-gray-700">
                     <CodeEditor value={currentProjectData.uiCode || ''} />
                   </div>
                 )}
