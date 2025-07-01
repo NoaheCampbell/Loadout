@@ -29,7 +29,7 @@ export default function Workspace() {
       {/* Project Header */}
       <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="px-6 py-4">
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
             {currentProjectData?.idea ? 
               currentProjectData.idea.split('\n')[0].slice(0, 50) + 
               (currentProjectData.idea.split('\n')[0].length > 50 ? '...' : '') : 
@@ -47,8 +47,8 @@ export default function Workspace() {
                 onClick={() => setCurrentTab(tab.id)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-t-lg transition-colors ${
                   currentTab === tab.id
-                    ? 'bg-gray-50 dark:bg-gray-900 border-t border-l border-r border-gray-200 dark:border-gray-700 -mb-px'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                    ? 'bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 border-t border-l border-r border-gray-200 dark:border-gray-700 -mb-px'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100'
                 }`}
               >
                 <Icon className="w-4 h-4" />

@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Eye, Code2, Copy, AlertCircle, RefreshCw, FileCode, FileCode2, Folder, Loader2, Download, ExternalLink } from 'lucide-react'
+import { Eye, Code2, Copy, AlertCircle, RefreshCw, FileCode, FileCode2, Folder, Loader2, Download } from 'lucide-react'
 import { useStore } from '../../store'
 import toast from 'react-hot-toast'
 import Editor from 'react-simple-code-editor'
@@ -89,25 +89,12 @@ function LocalhostPreview({ files, refreshKey }: { files: any[]; refreshKey: num
   }
   
   return (
-    <div className="relative h-full">
-      <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
-        <a
-          href={previewUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 px-2 py-1 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-50 transition-colors"
-          title="Open in browser"
-        >
-          <ExternalLink className="w-3 h-3" />
-          Open in browser
-        </a>
-      </div>
-      <iframe
-        src={previewUrl}
-        className="w-full h-full border-0 bg-white"
-        title="UI Preview"
-      />
-    </div>
+    <iframe
+      src={previewUrl}
+      className="w-full border-0 bg-white"
+      style={{ height: '800px', minHeight: '800px' }}
+      title="UI Preview"
+    />
   )
 }
 
@@ -502,7 +489,7 @@ Generated on: ${new Date().toLocaleString()}
             <h3 className="text-lg font-semibold">v0 Prompt</h3>
             <button
               onClick={handleCopyV0Prompt}
-              className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+              className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors"
             >
               <Copy className="w-4 h-4" />
               Copy Prompt
@@ -529,7 +516,7 @@ Generated on: ${new Date().toLocaleString()}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${
                   uiViewMode === 'preview'
                     ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
               >
                 <Eye className="w-4 h-4" />
@@ -540,7 +527,7 @@ Generated on: ${new Date().toLocaleString()}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${
                   uiViewMode === 'code'
                     ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
               >
                 <Code2 className="w-4 h-4" />
@@ -551,7 +538,7 @@ Generated on: ${new Date().toLocaleString()}
                 <button
                   onClick={handleRetryGeneration}
                   disabled={isGenerating}
-                  className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
                   title="Regenerate UI with new variations"
                 >
                   {isGenerating ? (
@@ -568,7 +555,7 @@ Generated on: ${new Date().toLocaleString()}
                 </button>
                 <button
                   onClick={handleCopyCode}
-                  className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors"
                 >
                   <Copy className="w-4 h-4" />
                   Copy Code
@@ -576,7 +563,7 @@ Generated on: ${new Date().toLocaleString()}
                 {currentProjectData?.uiFiles && currentProjectData.uiFiles.length > 0 && (
                   <button
                     onClick={handleExportFiles}
-                    className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                    className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors"
                   >
                     <Download className="w-4 h-4" />
                     Export Files
@@ -667,7 +654,20 @@ Generated on: ${new Date().toLocaleString()}
                   </div>
                 ) : (
                   <div className="flex flex-col h-full">
-                    <div className="relative flex-1 bg-gray-50">
+                    {/* Refresh button bar */}
+                    <div className="bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex justify-end">
+                      <button
+                        onClick={() => {
+                          setRefreshKey(prev => prev + 1);
+                        }}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-500 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-500 transition-colors"
+                        title="Refresh preview"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        Refresh
+                      </button>
+                    </div>
+                    <div className="relative flex-1 bg-gray-50 overflow-auto">
                       {currentProjectData?.uiFiles && currentProjectData.uiFiles.length > 0 ? (
                         <LocalhostPreview files={currentProjectData.uiFiles} refreshKey={refreshKey} />
                       ) : (
@@ -675,16 +675,6 @@ Generated on: ${new Date().toLocaleString()}
                           <p className="text-gray-500">No UI files available for preview</p>
                         </div>
                       )}
-                      {/* Refresh button */}
-                      <button
-                        onClick={() => {
-                          setRefreshKey(prev => prev + 1);
-                        }}
-                        className="absolute top-2 right-2 p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors z-10"
-                        title="Refresh preview"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
                     </div>
                   </div>
                 )}
