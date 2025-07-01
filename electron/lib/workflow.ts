@@ -20,28 +20,28 @@ const llm = new ChatOpenAI({
   temperature: 0.7,
 })
 
-// Specialized LLM for code generation with lower temperature
+// Specialized LLM for code generation with balanced temperature
 const codeLLM = new ChatOpenAI({
   modelName: 'gpt-4-1106-preview',
-  temperature: 0.3, // Lower temperature for more consistent code generation
+  temperature: 0.5, // Balanced temperature for creative but consistent code
 })
 
 // Progress callback type
 type ProgressCallback = (node: string, status: 'pending' | 'in-progress' | 'success' | 'error', message?: string) => void
 
-// Process idea into structured format
+// Process idea into structured format for React app
 async function processIdea(idea: string): Promise<ProjectIdea> {
   const response = await llm.invoke([
     new SystemMessage(
-      'Extract a project title and clean description from the user\'s raw idea. ' +
-      'The title should be concise (3-5 words). The description should be clear and actionable.'
+      'Extract a project title and clean description for a REACT WEB APPLICATION from the user\'s idea. ' +
+      'The title should be concise (3-5 words). The description should clearly describe what this React app will do.'
     ),
-    new HumanMessage(idea),
+    new HumanMessage(`Create a React web application for: ${idea}`),
   ])
 
   const content = response.content as string
   const lines = content.split('\n').filter(line => line.trim())
-  const title = lines[0]?.replace(/^(Title:|#)\s*/i, '').trim() || 'Untitled Project'
+  const title = lines[0]?.replace(/^(Title:|#)\s*/i, '').trim() || 'Untitled React App'
   const description = lines.slice(1).join(' ').replace(/^(Description:)\s*/i, '').trim() || idea
 
   return { title, description }
@@ -162,30 +162,39 @@ Format as JSON array:
   }))
 }
 
-// Generate UI plan
+// Generate UI plan for React application
 async function generateUIPlan(projectIdea: ProjectIdea, prd: PRD): Promise<UIPlan> {
   const prompt = `
-Based on this project, create a UI plan:
+Based on this project, create a UI plan for a REACT WEB APPLICATION:
 
 Title: ${projectIdea.title}
 Problem: ${prd.problem}
 Goals: ${prd.goals.join(', ')}
 
-Generate:
-1. List of main UI components needed
-2. Overall layout structure
-3. Key user interactions
+Generate a plan for a modern React application with:
+1. List of specific React components needed - be explicit with component names (e.g., "UserDashboard" not just "Dashboard", "ProductListTable" not just "Table")
+2. Layout structure (single page app, dashboard layout, etc.)
+3. Key user interactions (clicks, forms, modals, etc.)
+
+IMPORTANT: 
+- List ALL major components needed for the app
+- Use descriptive component names that indicate their purpose
+- Include components like Header, Navigation, Sidebar, Footer, Modal, Form, List, Card, etc. as needed
+- DO NOT include "App" or "Main" as these are generated automatically
+
+For example, a task management app might have:
+["TaskHeader", "TaskSidebar", "TaskList", "TaskCard", "AddTaskModal", "TaskDetailsPanel", "TaskFilters"]
 
 Format as JSON:
 {
-  "components": ["ComponentName", ...],
-  "layout": "Description of the layout structure",
-  "user_interactions": ["interaction1", "interaction2", ...]
+  "components": ["specific", "component", "names", ...],
+  "layout": "Detailed layout description",
+  "user_interactions": ["specific interactions", ...]
 }
 `
 
   const response = await llm.invoke([
-    new SystemMessage('You are a UI/UX designer planning the interface. Return only valid JSON.'),
+    new SystemMessage('You are a UI/UX designer planning the interface. Return only valid JSON. Be specific with component names that clearly indicate their purpose.'),
     new HumanMessage(prompt),
   ])
 
@@ -196,16 +205,10 @@ Format as JSON:
   return JSON.parse(jsonMatch[0]) as UIPlan
 }
 
-// Determine UI generation strategy
+// Always use GPT for React applications
 function determineUIStrategy(uiPlan: UIPlan): UIStrategy {
-  const componentCount = uiPlan.components.length
-  const hasComplexInteractions = uiPlan.user_interactions.some(
-    interaction => interaction.toLowerCase().includes('drag') ||
-                   interaction.toLowerCase().includes('real-time') ||
-                   interaction.toLowerCase().includes('complex')
-  )
-
-  return (componentCount <= 3 && !hasComplexInteractions) ? 'v0' : 'gpt'
+  // We're focusing on React applications only, always use GPT
+  return 'gpt'
 }
 
 // Generate v0 prompt
@@ -236,91 +239,624 @@ Format as JSON with sections for:
   return JSON.parse(jsonMatch[0])
 }
 
-// Generate multiple UI files
-async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan): Promise<UIFile[]> {
-  const prompt = `
-Create a complete React application with multiple files for this project:
-
-Project: ${projectIdea.title}
-Components needed: ${uiPlan.components.join(', ')}
-Layout: ${uiPlan.layout}
-Interactions: ${uiPlan.user_interactions.join(', ')}
-
-Create a PROPERLY STRUCTURED multi-file React application:
-
-1. **Component Organization** - Create separate files for distinct UI components:
-   - Each major UI section gets its own file (Header.tsx, Sidebar.tsx, etc.)
-   - Shared/reusable components in their own files (Button.tsx, Card.tsx, etc.)
-   - Main App.tsx that uses all components
-
-2. **File Structure Example**:
-   - App.tsx (main component that renders the full application)
-   - Header.tsx (navigation bar/header component)
-   - Sidebar.tsx (sidebar navigation if applicable)
-   - ContentArea.tsx (main content component)
-   - Any other components needed for the project
-
-3. **IMPORTANT**: Each component must be:
-   - Fully functional with realistic content
-   - Self-contained but accessible globally via window
-   - Include state management where appropriate
-   - Have proper event handlers and interactions
-
-Return ONLY this JSON structure:
-{
-  "files": [
-    {
-      "filename": "Header.tsx",
-      "type": "component",
-      "content": "const Header = () => {\n  return React.createElement(...);\n};\nwindow.Header = Header;"
-    },
-    {
-      "filename": "App.tsx",
-      "type": "main",
-      "content": "const App = () => {\n  return React.createElement('div', null,\n    React.createElement(Header),\n    ...);\n};\nwindow.App = App;"
-    }
-  ]
+// Determine component type based on name
+function determineComponentType(componentName: string): string {
+  const name = componentName.toLowerCase()
+  
+  if (name.includes('header') || name.includes('navbar') || name.includes('navigation') || name.includes('topbar')) {
+    return 'navigation'
+  } else if (name.includes('sidebar') || name.includes('menu') || name.includes('drawer')) {
+    return 'sidebar'
+  } else if (name.includes('footer')) {
+    return 'footer'
+  } else if (name.includes('modal') || name.includes('dialog') || name.includes('popup')) {
+    return 'modal'
+  } else if (name.includes('form') || name.includes('input')) {
+    return 'form'
+  } else if (name.includes('list') || name.includes('table') || name.includes('grid')) {
+    return 'datadisplay'
+  } else if (name.includes('card') || name.includes('tile') || name.includes('widget')) {
+    return 'card'
+  } else if (name.includes('chart') || name.includes('graph') || name.includes('analytics')) {
+    return 'visualization'
+  } else if (name === 'app' || name.includes('main') || name.includes('container')) {
+    return 'container'
+  } else {
+    return 'generic'
+  }
 }
 
-Technical Rules:
-- Use React.createElement() syntax - NO JSX
-- Each component: window.ComponentName = ComponentName
-- Components reference each other directly (e.g., React.createElement(Header))
+// Generate a single React component file
+async function generateComponentFile(
+  componentName: string, 
+  componentType: string,
+  projectContext: { 
+    title: string; 
+    description: string; 
+    otherComponents: string[];
+    layout?: string;
+    interactions?: string[];
+  },
+  retryAttempt: number = 0
+): Promise<string> {
+  // Generate contextual prompts based on component type
+  const getComponentPrompt = () => {
+    switch (componentType) {
+      case 'navigation':
+        return `Create a navigation/header component with:
+- Brand/logo area (use text-2xl font-bold)
+- Navigation items relevant to "${projectContext.title}" (use hover:text-blue-600)
+- User account area with avatar/dropdown
+- Responsive mobile design (hidden md:flex for desktop items)
+- Styled with Tailwind: bg-white shadow-md, proper padding, flex layout
+- Any search or action buttons that make sense for this app`
+      
+      case 'sidebar':
+        return `Create a sidebar navigation component with:
+- Menu items relevant to "${projectContext.title}"
+- Organized sections with proper spacing (space-y-2)
+- Icons where appropriate (use emoji or unicode symbols)
+- Active state handling (bg-blue-50 text-blue-700 for active)
+- Styled with Tailwind: w-64 bg-gray-50 p-4, hover effects
+- Proper visual hierarchy with text-sm, font-medium`
+      
+      case 'footer':
+        return `Create a footer component with:
+- Links relevant to "${projectContext.title}"
+- Copyright information
+- Contact or support links
+- Social media if appropriate`
+      
+      case 'modal':
+        return `Create a modal/dialog component with:
+- Proper overlay background (fixed inset-0 bg-black bg-opacity-50)
+- Modal container (bg-white rounded-lg shadow-xl p-6)
+- Close button (absolute top-2 right-2)
+- Content area for "${projectContext.title}" functionality
+- Appropriate action buttons (styled with Tailwind button classes)
+- MUST be hidden by default (useState(false))
+- Centered positioning (flex items-center justify-center)`
+      
+      case 'form':
+        return `Create a form component with:
+- Input fields relevant to "${projectContext.title}"
+- Proper Tailwind form styling (border rounded px-3 py-2 focus:outline-none focus:ring-2)
+- Validation states (border-red-500 for errors, border-green-500 for success)
+- Submit button (bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700)
+- Clear labels (text-sm font-medium text-gray-700) and helper text
+- Proper spacing between form elements (space-y-4)`
+      
+      case 'datadisplay':
+        return `Create a data display component (list/table/grid) with:
+- Mock data relevant to "${projectContext.title}"
+- Sorting/filtering if appropriate
+- Proper styling and spacing
+- Empty state handling`
+      
+      case 'card':
+        return `Create a card/widget component with:
+- Content relevant to "${projectContext.title}"
+- Proper visual hierarchy
+- Interactive elements if needed
+- Consistent styling`
+      
+      case 'visualization':
+        return `Create a data visualization component with:
+- Mock data visualization for "${projectContext.title}"
+- Use simple CSS/HTML (no external chart libraries)
+- Clear labels and legends
+- Interactive if appropriate`
+      
+      case 'container':
+        return `Create the main container/app component that:
+- Uses all other components: ${projectContext.otherComponents.join(', ')}
+- Implements the layout: ${projectContext.layout || 'appropriate layout for the app'}
+- Reference other components as window.ComponentName in React.createElement
+- Example: React.createElement(window.Header) NOT React.createElement(Header)
+- MUST be named exactly "App" (const App = ...)
+- MUST end with: window.App = App;
+- Use proper Tailwind layout classes (min-h-screen, flex, grid, etc.)
+- Apply appropriate background colors and spacing
+- Ensure responsive design with proper breakpoints`
+      
+      default:
+        return `Create a ${componentName} component that:
+- Serves its purpose in the "${projectContext.title}" application
+- Has appropriate content and functionality
+- Follows React best practices
+- Includes any necessary state management`
+    }
+  }
+
+  const componentPrompt = getComponentPrompt()
+
+  const retryWarning = retryAttempt > 0 ? `
+
+⚠️ CRITICAL - PREVIOUS ATTEMPT FAILED ⚠️
+DO NOT include any of the following:
+- NO markdown formatting (no #, *, ---, or \`\`\`)
+- NO explanatory text (no "Here's", "This is", "Let me", etc.)
 - NO import/export statements
-- Include realistic data and full functionality
-`
+- NO comments explaining what the code does
+- ONLY pure React component code
+- MUST include window.${componentName} = ${componentName}; at the end
+- MUST use React.createElement() for ALL elements
+
+RETURN ONLY THE COMPONENT CODE!` : ''
+
+  const prompt = `Create a React component for: ${projectContext.title}
+${projectContext.description ? `Project Description: ${projectContext.description}` : ''}
+
+Component: ${componentName}
+Requirements: ${componentPrompt}
+
+${projectContext.otherComponents.length > 0 ? `Other components in this app: ${projectContext.otherComponents.join(', ')}` : ''}
+${projectContext.interactions ? `Key interactions: ${projectContext.interactions.slice(0, 3).join(', ')}` : ''}
+
+Rules:
+- Use React.createElement() - NO JSX
+- Use React.useState and React.useEffect (NOT just useState/useEffect)
+- All React APIs must be prefixed with React. (e.g., React.useState, React.useEffect, React.useCallback)
+- CRITICAL: Use { className: 'value' } NEVER { class: 'value' }
+- The word "class" should NEVER appear except in "className"
+- IMPORTANT: Use Tailwind CSS classes for ALL styling (e.g., className: 'bg-blue-500 text-white p-4 rounded-lg')
+- DO NOT use custom CSS class names - ONLY use Tailwind utility classes
+- Add rich, realistic mock data relevant to "${projectContext.title}"
+- Include proper event handlers and state management
+- Make it visually appealing with proper spacing, colors, and layout using Tailwind
+- Minimum 80-150 lines of actual component code
+- End with: window.${componentName} = ${componentName};
+- NO destructuring of React (no const {useState} = React)
+${componentType === 'container' ? `- When using other components, reference them as window.ComponentName
+- Example: React.createElement(window.${projectContext.otherComponents[0] || 'Header'})
+- Arrange components according to: ${projectContext.layout}` : ''}
+
+Example of CORRECT syntax:
+const [count, setCount] = React.useState(0);
+React.useEffect(() => { ... }, []);
+React.createElement('div', { className: 'bg-white p-6 rounded-lg shadow-md' }, ...)
+React.createElement('button', { className: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700' }, 'Click')
+${componentType === 'container' ? `React.createElement(window.${projectContext.otherComponents[0] || 'Header'}, null)` : ''}
+${retryWarning}
+Return ONLY the component code, no explanations.`
+
+  const systemMessage = retryAttempt > 0 
+    ? `You are a React code generator. YOUR PREVIOUS ATTEMPT FAILED.
+
+STRICT OUTPUT REQUIREMENTS:
+- Output ONLY valid JavaScript code
+- NO markdown formatting or code blocks (\`\`\`)
+- NO explanatory text before, after, or within the code
+- NO comments explaining what you're doing
+- Start directly with the component code
+- End with window.${componentName} = ${componentName};
+
+FOLLOW ALL REACT RULES:
+- Use React.createElement() for ALL elements
+- Use React.useState, React.useEffect (NOT useState, useEffect)
+- Use className for CSS classes, NEVER use 'class'
+- Use Tailwind CSS utility classes only
+
+RETURN ONLY THE COMPONENT CODE!`
+    : `You are a React expert. Generate ONLY component code. No markdown, no explanations.
+CRITICAL RULES - MUST FOLLOW:
+1. Use React.useState NOT useState
+2. Use React.useEffect NOT useEffect  
+3. Use React.createElement NOT createElement
+4. End with window.${componentName} = ${componentName};
+5. NEVER use the word 'class' anywhere - ALWAYS use 'className' instead
+6. For CSS classes: { className: 'my-class' } NEVER { class: 'my-class' }
+7. The word 'class' should NOT appear ANYWHERE in your code except as part of 'className'
+8. Create FULLY FUNCTIONAL components with rich content and realistic data
+9. Components should demonstrate the actual functionality of the ${projectContext.title} app
+10. Include appropriate state management, event handlers, and mock data
+11. USE TAILWIND CSS CLASSES for ALL styling - no custom CSS classes
+12. Make components visually appealing with proper Tailwind classes for:
+    - Colors (bg-blue-500, text-white, border-gray-300)
+    - Spacing (p-4, m-2, space-y-4)
+    - Layout (flex, grid, absolute)
+    - Typography (text-xl, font-bold)
+    - Effects (shadow-lg, rounded-lg, hover:bg-blue-600)
+NO import statements, NO export statements.`
 
   const response = await codeLLM.invoke([
-    new SystemMessage(`You are an expert React developer creating production-ready applications.
-
-CRITICAL: You MUST return ONLY a valid JSON object with a "files" array. No other text.
-
-Each file in the array must have:
-- filename: Component name with .tsx extension
-- type: "component" or "main" 
-- content: Complete React component code using React.createElement
-
-Component Rules:
-1. Each component must end with: window.ComponentName = ComponentName
-2. Use other components via React.createElement(ComponentName)
-3. The main App.tsx must render the complete application
-4. Include realistic, production-ready UI with proper styling
-5. Add state management, event handlers, and full functionality
-
-DO NOT include any markdown, explanations, or text outside the JSON.`),
-    new HumanMessage(prompt + '\n\nREMEMBER: Return ONLY the JSON object, no other text!'),
+    new SystemMessage(systemMessage),
+    new HumanMessage(prompt)
   ])
 
-  let content = response.content as string
+  let code = response.content as string
   
-  // Extract JSON from response
-  const jsonMatch = content.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) {
-    throw new Error('No JSON found in UI generation response')
+  // Clean up any markdown or extra text
+  code = code.replace(/```[\w]*\n?/g, '').trim()
+  code = code.replace(/```/g, '').trim()
+  
+  // Remove any destructuring of React (const { useState } = React)
+  code = code.replace(/const\s*{\s*[^}]+\s*}\s*=\s*React\s*;?\s*/g, '')
+  
+  // Remove any import statements
+  code = code.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '')
+  
+  // Remove any leading explanatory text
+  const firstConstOrFunction = code.search(/(?:const|function)\s+\w+/)
+  if (firstConstOrFunction > 0) {
+    code = code.substring(firstConstOrFunction)
   }
   
-  const result = JSON.parse(jsonMatch[0]) as { files: UIFile[] }
-  return result.files
+  // Ensure the component has window assignment
+  if (!code.includes(`window.${componentName}`)) {
+    console.warn(`Component ${componentName} missing window assignment, adding it...`)
+    code = code.trim() + `\n\nwindow.${componentName} = ${componentName};`
+  }
+  
+  // Fix common issues
+  if (code.includes('useState(') && !code.includes('React.useState(')) {
+    console.warn(`Component ${componentName} uses useState instead of React.useState, fixing...`)
+    // Replace common React hooks with proper syntax
+    code = code.replace(/\buseState\(/g, 'React.useState(')
+    code = code.replace(/\buseEffect\(/g, 'React.useEffect(')
+    code = code.replace(/\buseCallback\(/g, 'React.useCallback(')
+    code = code.replace(/\buseMemo\(/g, 'React.useMemo(')
+    code = code.replace(/\buseRef\(/g, 'React.useRef(')
+    code = code.replace(/\buseContext\(/g, 'React.useContext(')
+    code = code.replace(/\buseReducer\(/g, 'React.useReducer(')
+  }
+  
+  // Also fix createElement if needed
+  if (code.includes('createElement(') && !code.includes('React.createElement(')) {
+    console.warn(`Component ${componentName} uses createElement instead of React.createElement, fixing...`)
+    code = code.replace(/\bcreateElement\(/g, 'React.createElement(')
+  }
+  
+  // Fix all potential class/className issues
+  const originalCode = code
+  
+  // Pattern 1: { class: 'value' } or { class: "value" }
+  code = code.replace(/{\s*class\s*:\s*(['"])/g, '{ className: $1')
+  
+  // Pattern 2: , class: 'value' or , class: "value"
+  code = code.replace(/,\s*class\s*:\s*(['"])/g, ', className: $1')
+  
+  // Pattern 3: "class": or 'class': (quoted key)
+  code = code.replace(/["']class["']\s*:/g, '"className":')
+  
+  // Pattern 4: Plain class: at start of line or after whitespace
+  code = code.replace(/(\s)class\s*:\s*/g, '$1className: ')
+  
+  // Pattern 5: More aggressive - any object property "class"
+  // This catches { someProperty, class: 'value' } patterns
+  code = code.replace(/([,{]\s*)class(\s*:)/g, '$1className$2')
+  
+  // Pattern 6: Fix any remaining bare "class" that might be interpreted as keyword
+  // But preserve className
+  code = code.replace(/\bclass\b(?!Name)/g, 'className')
+  
+  if (code !== originalCode) {
+    console.warn(`Component ${componentName} had class/className issues that were fixed`)
+  }
+  
+  // Check for any remaining problematic patterns
+  if (code.match(/\bclass\b(?!Name)/)) {
+    console.error(`Component ${componentName} still contains problematic "class" keyword`)
+    // Log all contexts where class appears
+    const classRegex = /\bclass\b(?!Name)/g
+    let match
+    while ((match = classRegex.exec(code)) !== null) {
+      const start = Math.max(0, match.index - 30)
+      const end = Math.min(code.length, match.index + 30)
+      console.error(`  Context: "${code.substring(start, end).replace(/\n/g, '\\n')}"`)
+    }
+  }
+  
+  return code
+}
+
+// Validate generated code for common issues
+function validateGeneratedCode(code: string, componentName: string): { valid: boolean; issues: string[] } {
+  const issues: string[] = []
+  
+  // Check for markdown code blocks
+  if (code.includes('```')) {
+    issues.push('Contains markdown code blocks')
+  }
+  
+  // Check for explanatory text patterns
+  const explanatoryPatterns = [
+    /^(Here's|Here is|This is|I'll|I will|Let me)/m,
+    /^(The following|Below is|Above is)/m,
+    /(Error:|Sorry|I cannot|I can't|I'm unable)/i,
+    /^(Note:|Important:|Please note)/m,
+    /^(To use this|To implement)/m,
+    /^(Step \d+:|First,|Second,|Finally,)/m,
+    /^(This component|This function|This will)/mi,
+    /^(You can|You should|You need to)/mi,
+    /^(Make sure|Be sure|Ensure that)/mi,
+    /^(Remember to|Don't forget)/mi,
+    /^(Example:|For example:)/mi,
+    /(as follows:|following code:|code below:)/i,
+    /^\/\/ This is a/m,
+    /^\/\/ Here's/m
+  ]
+  
+  for (const pattern of explanatoryPatterns) {
+    if (pattern.test(code)) {
+      issues.push(`Contains explanatory text: "${pattern.source}"`)
+    }
+  }
+  
+  // Check for import/export statements (should not be in the code)
+  if (code.includes('import ') || code.includes('export ')) {
+    issues.push('Contains import/export statements')
+  }
+  
+  // Check if it's missing the window assignment
+  if (!code.includes(`window.${componentName}`)) {
+    issues.push(`Missing window.${componentName} assignment`)
+  }
+  
+  // Check if it's missing React.createElement (unless it's just a compatibility wrapper)
+  if (!code.includes('React.createElement') && !code.includes('JSX compatibility wrapper')) {
+    issues.push('Missing React.createElement calls')
+  }
+  
+  // Check for common markdown patterns
+  if (code.match(/^#{1,6}\s/m) || code.match(/^\*{1,3}\s/m) || code.match(/^-{3,}$/m)) {
+    issues.push('Contains markdown formatting')
+  }
+  
+  // Check if it's too short (likely a placeholder or error)
+  if (code.length < 200) {
+    issues.push('Code is too short - likely incomplete or placeholder')
+  }
+  
+  // Check if it contains actual UI elements
+  if (!code.includes("'div'") && !code.includes('"div"') && 
+      !code.includes("'button'") && !code.includes('"button"') &&
+      !code.includes("'span'") && !code.includes('"span"')) {
+    issues.push('No UI elements found - component appears empty')
+  }
+  
+  return {
+    valid: issues.length === 0,
+    issues
+  }
+}
+
+// Analyze UI plan to determine what files need to be created
+function analyzeComponentsNeeded(uiPlan: UIPlan): Array<{ name: string; type: string }> {
+  const componentsToGenerate: Array<{ name: string; type: string }> = []
+  
+  // Filter out the App component as we'll generate it separately
+  const componentNames = uiPlan.components.filter(name => 
+    !name.toLowerCase().includes('app') && 
+    !name.toLowerCase().includes('main') &&
+    !name.toLowerCase().includes('container')
+  )
+  
+  // Analyze each component and determine its type
+  componentNames.forEach(name => {
+    const type = determineComponentType(name)
+    componentsToGenerate.push({ name, type })
+  })
+  
+  // Log what we're planning to generate
+  console.log('Components to generate:', componentsToGenerate)
+  
+  return componentsToGenerate
+}
+
+// Generate multiple UI files by creating components sequentially
+async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgress?: ProgressCallback): Promise<UIFile[]> {
+  const files: UIFile[] = []
+  
+  // Analyze what components we need based on the UI plan
+  const componentsToGenerate = analyzeComponentsNeeded(uiPlan)
+  
+  // If no components were identified, use sensible defaults based on the layout
+  if (componentsToGenerate.length === 0) {
+    console.log('No specific components found in UI plan, using defaults based on layout')
+    
+    // Analyze the layout description to determine defaults
+    const layoutLower = (uiPlan.layout || '').toLowerCase()
+    
+    if (layoutLower.includes('dashboard')) {
+      componentsToGenerate.push(
+        { name: 'Header', type: 'navigation' },
+        { name: 'Sidebar', type: 'sidebar' },
+        { name: 'Dashboard', type: 'datadisplay' }
+      )
+    } else if (layoutLower.includes('single page')) {
+      componentsToGenerate.push(
+        { name: 'Navigation', type: 'navigation' },
+        { name: 'Hero', type: 'generic' },
+        { name: 'Features', type: 'generic' },
+        { name: 'Footer', type: 'footer' }
+      )
+    } else {
+      // Generic default
+      componentsToGenerate.push(
+        { name: 'Header', type: 'navigation' },
+        { name: 'MainContent', type: 'generic' }
+      )
+    }
+  }
+  
+  const componentNames = componentsToGenerate.map(c => c.name)
+  
+  // Generate each component file with validation and retry
+  for (const component of componentsToGenerate) {
+    console.log(`Generating ${component.name} component (type: ${component.type})...`)
+    
+    let retryCount = 0
+    const maxRetries = 3
+    let content = ''
+    let isValid = false
+    
+    while (!isValid && retryCount < maxRetries) {
+      if (retryCount > 0) {
+        console.log(`Retrying ${component.name} generation (attempt ${retryCount + 1}/${maxRetries})...`)
+      }
+      
+      content = await generateComponentFile(
+        component.name,
+        component.type,
+        { 
+          title: projectIdea.title, 
+          description: projectIdea.description,
+          otherComponents: componentNames.filter(n => n !== component.name),
+          layout: uiPlan.layout,
+          interactions: uiPlan.user_interactions
+        },
+        retryCount
+      )
+      
+      // Validate the generated code
+      const validation = validateGeneratedCode(content, component.name)
+      isValid = validation.valid
+      
+      if (!isValid) {
+        console.warn(`Validation failed for ${component.name}:`, validation.issues)
+        if (onProgress && retryCount < maxRetries - 1) {
+          onProgress(`UI-${component.name}`, 'error', `Validation failed, retrying...`)
+        }
+        retryCount++
+        
+        // Add a small delay before retrying to avoid rate limits
+        if (retryCount < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+      } else {
+        console.log(`${component.name} generated successfully`)
+        if (onProgress) {
+          onProgress(`UI-${component.name}`, 'success', `Component validated`)
+        }
+      }
+    }
+    
+    if (!isValid) {
+      console.error(`Failed to generate valid code for ${component.name} after ${maxRetries} attempts`)
+      // Still add the file, but it might have issues
+    }
+    
+    files.push({
+      filename: `${component.name}.tsx`,
+      type: 'component',
+      content: content.trim()
+    })
+  }
+  
+  // Generate App.tsx last with validation and retry
+  console.log('Generating App component...')
+  
+  let appRetryCount = 0
+  const appMaxRetries = 3
+  let appContent = ''
+  let appIsValid = false
+  
+  while (!appIsValid && appRetryCount < appMaxRetries) {
+    if (appRetryCount > 0) {
+      console.log(`Retrying App generation (attempt ${appRetryCount + 1}/${appMaxRetries})...`)
+    }
+    
+    appContent = await generateComponentFile(
+      'App',
+      'container',
+      { 
+        title: projectIdea.title, 
+        description: projectIdea.description,
+        otherComponents: componentNames,
+        layout: uiPlan.layout,
+        interactions: uiPlan.user_interactions
+      },
+      appRetryCount
+    )
+    
+    // Validate the App component
+    const appValidation = validateGeneratedCode(appContent, 'App')
+    appIsValid = appValidation.valid
+    
+          if (!appIsValid) {
+        console.warn('Validation failed for App component:', appValidation.issues)
+        if (onProgress && appRetryCount < appMaxRetries - 1) {
+          onProgress('UI-App', 'error', 'Validation failed, retrying...')
+        }
+        appRetryCount++
+        
+        // Add a small delay before retrying to avoid rate limits
+        if (appRetryCount < appMaxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+    } else {
+      console.log('App component generated successfully')
+      if (onProgress) {
+        onProgress('UI-App', 'success', 'App component validated')
+      }
+    }
+  }
+  
+  if (!appIsValid) {
+    console.error(`Failed to generate valid App component after ${appMaxRetries} attempts`)
+  }
+  
+  // Extra validation for App component
+  if (!appContent.includes('const App') && !appContent.includes('function App')) {
+    console.error('App component not properly named! Content:', appContent.substring(0, 200))
+    // Try to fix by finding the main component and renaming it
+    const componentMatch = appContent.match(/(?:const|function)\s+(\w+)\s*[=(]/)
+    if (componentMatch && componentMatch[1] !== 'App') {
+      console.log(`Renaming ${componentMatch[1]} to App`)
+      appContent = appContent.replace(
+        new RegExp(`\\b${componentMatch[1]}\\b`, 'g'),
+        'App'
+      )
+    }
+  }
+  
+  // Verify the App content one more time
+  if (!appContent.includes('window.App')) {
+    console.error('App component missing window.App assignment! Adding it...')
+    appContent = appContent.trim() + '\n\nwindow.App = App;'
+  }
+  
+  // Fix component references to use window - more aggressive
+  componentNames.forEach(name => {
+    // Pattern 1: React.createElement(ComponentName
+    const pattern1 = new RegExp(`React\\.createElement\\(${name}(?=[,\\)])`, 'g')
+    if (appContent.match(pattern1)) {
+      console.log(`Fixing reference to ${name} to use window.${name}`)
+      appContent = appContent.replace(pattern1, `React.createElement(window.${name}`)
+    }
+    
+    // Pattern 2: React.createElement( ComponentName (with space)
+    const pattern2 = new RegExp(`React\\.createElement\\(\\s*${name}(?=[,\\)])`, 'g')
+    if (appContent.match(pattern2)) {
+      console.log(`Fixing spaced reference to ${name} to use window.${name}`)
+      appContent = appContent.replace(pattern2, `React.createElement(window.${name}`)
+    }
+    
+    // Pattern 3: Just in case - any remaining bare component references
+    const pattern3 = new RegExp(`(React\\.createElement\\([^)]*?)\\b${name}\\b`, 'g')
+    appContent = appContent.replace(pattern3, `$1window.${name}`)
+  })
+  
+  // Double check
+  componentNames.forEach(name => {
+    if (appContent.includes(`React.createElement(${name}`) && !appContent.includes(`React.createElement(window.${name}`)) {
+      console.error(`App still has bare reference to ${name}!`)
+    }
+  })
+  
+  // Log what we're actually storing
+  console.log('App component preview:', appContent.substring(0, 300))
+  console.log('App contains window.App?', appContent.includes('window.App'))
+  console.log('App contains React.createElement(window.Header)?', appContent.includes('React.createElement(window.Header)'))
+  
+  files.push({
+    filename: 'App.tsx',
+    type: 'main',
+    content: appContent.trim()
+  })
+  
+  return files
 }
 
 // Legacy: Generate single UI file
@@ -354,7 +890,8 @@ CRITICAL LAYOUT REQUIREMENTS:
 Technical Requirements:
 - Use React functional components with hooks for state management
 - Use React.createElement() for ALL elements - NO JSX SYNTAX
-- Style with Tailwind CSS classes in className props
+- Style with Tailwind CSS classes in className props (REQUIRED for ALL elements)
+- Use proper Tailwind classes for colors, spacing, layout, typography, and effects
 - Include mock data for display
 - NO imports - React will be available globally
 - End with: window.App = YourMainComponent;
@@ -560,8 +1097,20 @@ export async function runWorkflow(
       
       // Try to generate multiple files first
       try {
-        uiFiles = await generateUIFiles(projectIdea, uiPlan)
+        uiFiles = await generateUIFiles(projectIdea, uiPlan, onProgress)
         console.log('UI files generated:', uiFiles.length, 'files')
+        console.log('File details:', uiFiles.map(f => ({
+          filename: f.filename,
+          type: f.type,
+          length: f.content.length,
+          hasWindowAssignment: f.content.includes('window.')
+        })))
+        
+        // Validate that we have an App.tsx file
+        const hasAppFile = uiFiles.some(f => f.type === 'main' || f.filename.toLowerCase().includes('app'))
+        if (!hasAppFile) {
+          console.error('No App.tsx file found in generated files!')
+        }
         
         // Also generate single file for backwards compatibility
         // Combine all files into one for legacy support

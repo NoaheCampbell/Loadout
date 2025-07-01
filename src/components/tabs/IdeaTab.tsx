@@ -248,10 +248,10 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
         <div className="space-y-6">
           <div>
             <h1 className="text-3xl font-bold mb-2">
-              {isNewProject ? "What's your project idea?" : "Project Idea"}
+              {isNewProject ? "What React app do you want to build?" : "React App Idea"}
             </h1>
             <p className="text-gray-600 dark:text-gray-400">
-              Describe your project in a few sentences. Our AI will help you refine it before generating the full blueprint.
+              Describe your React application in a few sentences. Our AI will help you refine it before generating the complete React component structure.
             </p>
           </div>
 
@@ -259,7 +259,7 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
             <textarea
               value={idea}
               onChange={(e) => setIdea(e.target.value)}
-              placeholder="I want to build a web app that..."
+              placeholder="I want to build a React app that..."
               className="w-full h-64 p-4 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
               disabled={isGenerating}
             />

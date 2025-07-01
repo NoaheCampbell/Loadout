@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react'
-import { Eye, Code2, Copy, AlertCircle, RefreshCw } from 'lucide-react'
+import { Eye, Code2, Copy, AlertCircle, RefreshCw, FileCode, FileCode2, Folder, Loader2 } from 'lucide-react'
 import { useStore } from '../../store'
 import toast from 'react-hot-toast'
 import Editor from 'react-simple-code-editor'
 import { highlight, languages } from 'prismjs'
 import 'prismjs/components/prism-jsx'
 import 'prismjs/themes/prism-tomorrow.css'
+import { ipc } from '../../lib/ipc'
+import type { GenerationProgress } from '../../types'
 
 function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number }) {
   // Encode the code as base64 to avoid escaping issues
@@ -383,17 +385,72 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
             '</div>' +
           '</div>';
       } else {
+        // Log the code we're about to execute to help debug syntax errors
+        console.log('=== CODE TO EXECUTE ===');
+        console.log(code.substring(0, 1000)); // First 1000 chars
+        if (code.length > 1000) {
+          console.log('... (truncated, total length: ' + code.length + ')');
+        }
+        
+        // Find all occurrences of "class" that aren't part of "className"
+        const classRegex = /\bclass\b(?!Name)/g;
+        let classMatch;
+        const classOccurrences = [];
+        while ((classMatch = classRegex.exec(code)) !== null) {
+          const start = Math.max(0, classMatch.index - 50);
+          const end = Math.min(code.length, classMatch.index + 50);
+          classOccurrences.push({
+            index: classMatch.index,
+            context: code.substring(start, end),
+            line: code.substring(0, classMatch.index).split('\\n').length
+          });
+        }
+        
+        if (classOccurrences.length > 0) {
+          console.error('WARNING: Found problematic "class" keywords:');
+          classOccurrences.forEach((occ, i) => {
+            console.error('  ' + (i + 1) + '. Line ~' + occ.line + ', position ' + occ.index + ':');
+            console.error('     Context: "' + occ.context.replace(/\\n/g, '\\\\n') + '"');
+          });
+        }
+        
+        console.log('=== END CODE ===');
+        
         // Create a script element to execute the code (avoids eval)
         const script = document.createElement('script');
-        script.textContent = code;
+                            // Create the script content - wrap in IIFE to avoid issues
+          script.textContent = '(function() { try { ' + code + 
+            ' console.log("Code executed successfully");' +
+            ' console.log("window.App after execution:", window.App);' +
+            ' console.log("window.Header after execution:", window.Header);' +
+            ' console.log("window.Sidebar after execution:", window.Sidebar);' +
+            ' console.log("window.MainContent after execution:", window.MainContent);' +
+            '} catch (error) {' +
+            ' console.error("Error executing component code:", error);' +
+            ' console.error("Error stack:", error.stack);' +
+            ' var errorDiv = document.createElement("div");' +
+            ' errorDiv.className = "error";' +
+            ' errorDiv.textContent = "Error executing code: " + error.message;' +
+            ' document.getElementById("root").appendChild(errorDiv);' +
+            '}})();';
         console.log('Executing script with code length:', code.length);
+        
+        // Add error handler for syntax errors
+        script.onerror = function(e) {
+          console.error('Script syntax error:', e);
+        };
+        
         document.body.appendChild(script);
         console.log('Script added. Checking window.App immediately:', window.App);
+        
+        // Debug what components are available
+        console.log('Available window properties:', Object.keys(window).filter(k => k[0] === k[0].toUpperCase() && typeof window[k] === 'function'));
         
         // Add a small delay to ensure script execution completes
         setTimeout(() => {
           // Debug: log what's available
           console.log('After delay - Looking for component. window.App:', window.App, 'window.Default:', window.Default, 'window.Component:', window.Component);
+          console.log('All components:', Object.keys(window).filter(k => k[0] === k[0].toUpperCase() && typeof window[k] === 'function'));
           
           // Find and render the component
           const component = window.App || window.Default || window.Component;
@@ -454,7 +511,17 @@ function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number 
 }
 
 export default function UiTab() {
-  const { currentProjectData, uiViewMode, setUiViewMode } = useStore()
+  const { 
+    currentProjectData, 
+    uiViewMode, 
+    setUiViewMode,
+    setGenerating,
+    clearProgress,
+    addProgress,
+    setProjectData,
+    isGenerating,
+    generationProgress 
+  } = useStore()
   const [showRawCode, setShowRawCode] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
@@ -496,8 +563,68 @@ export default function UiTab() {
     }
   }
 
-  const handleRetryGeneration = () => {
-    toast('Retry generation feature coming soon!')
+  const handleRetryGeneration = async () => {
+    // Check if we have a project idea to regenerate
+    if (!currentProjectData?.idea) {
+      toast.error('No project idea found to regenerate')
+      return
+    }
+
+    // Confirm with user before regenerating
+    const confirmed = window.confirm('This will regenerate all UI files. Are you sure you want to continue?')
+    if (!confirmed) return
+
+    setGenerating(true)
+    clearProgress()
+    toast('Regenerating UI files...')
+
+    try {
+      // Set up progress listener
+      const unsubscribe = ipc.onGenerationProgress((progress: GenerationProgress) => {
+        console.log('Retry: Received progress update:', progress)
+        addProgress(progress)
+      })
+
+      // Regenerate the project with existing idea and chat history
+      console.log('Retry: Regenerating project with idea:', currentProjectData.idea)
+      const result = await ipc.generateProject(
+        currentProjectData.idea, 
+        currentProjectData.chatHistory || []
+      )
+      console.log('Retry: Generation result:', result)
+
+      if (result.success && result.data?.projectId) {
+        console.log('Retry: Project regenerated successfully')
+        toast.success('UI regenerated successfully!')
+        
+        // Small delay to ensure files are written
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        // Reload the project data to get new UI files
+        console.log('Retry: Loading updated project data for:', result.data.projectId)
+        const updatedProjectData = await ipc.loadProject(result.data.projectId)
+        console.log('Retry: Updated project data loaded:', updatedProjectData ? 'success' : 'failed')
+        
+        if (updatedProjectData) {
+          setProjectData(updatedProjectData)
+          // Reset refresh key to force preview update
+          setRefreshKey(prev => prev + 1)
+        } else {
+          toast.error('Failed to load regenerated project data')
+        }
+      } else {
+        console.log('Retry: Regeneration failed:', result.error)
+        toast.error(result.error || 'Failed to regenerate UI')
+      }
+
+      // Clean up listener
+      unsubscribe()
+    } catch (error) {
+      console.error('Regeneration error:', error)
+      toast.error('An error occurred while regenerating the UI')
+    } finally {
+      setGenerating(false)
+    }
   }
 
   // Check if the code contains problematic patterns
@@ -675,8 +802,136 @@ window.App = (() => {
         return 0;
       });
       
+      console.log('UI Files:', sortedFiles.map(f => ({ 
+        filename: f.filename, 
+        type: f.type, 
+        hasWindowApp: f.content.includes('window.App'),
+        length: f.content.length 
+      })));
+      
+      // Check each file for class issues
+      sortedFiles.forEach(file => {
+        const classCount = (file.content.match(/\bclass\b(?!Name)/g) || []).length;
+        if (classCount > 0) {
+          console.error(`File ${file.filename} contains ${classCount} problematic "class" keywords`);
+          // Show first occurrence
+          const match = file.content.match(/.{0,50}\bclass\b(?!Name).{0,50}/);
+          if (match) {
+            console.error(`  First occurrence: "${match[0].replace(/\n/g, '\\n')}"`);
+          }
+        }
+      });
+      
       // Combine all files
-      return sortedFiles.map(file => file.content).join('\n\n');
+      let combined = sortedFiles.map(file => file.content).join('\n\n');
+      
+      console.log('=== COMBINED CODE PREVIEW ===');
+      console.log('Total length:', combined.length);
+      console.log('First 500 chars:', combined.substring(0, 500));
+      
+      // Check for problematic patterns before fixing
+      const classMatches = combined.match(/\bclass\b(?!Name)/g);
+      if (classMatches) {
+        console.error(`Found ${classMatches.length} instances of "class" that need fixing`);
+        // Show first few matches with context
+        const regex = /(.{0,30})\bclass\b(?!Name)(.{0,30})/g;
+        let match;
+        let count = 0;
+        while ((match = regex.exec(combined)) !== null && count < 5) {
+          console.error(`  Match ${count + 1}: "${match[0].replace(/\n/g, '\\n')}"`);
+          count++;
+        }
+      } else {
+        console.log('No problematic "class" keywords found in combined code');
+      }
+      
+      // Fix common React syntax issues
+      if (combined.includes('useState(') && !combined.includes('React.useState(')) {
+        console.warn('Fixing React hook syntax in combined code...');
+        combined = combined.replace(/\buseState\(/g, 'React.useState(');
+        combined = combined.replace(/\buseEffect\(/g, 'React.useEffect(');
+        combined = combined.replace(/\buseCallback\(/g, 'React.useCallback(');
+        combined = combined.replace(/\buseMemo\(/g, 'React.useMemo(');
+        combined = combined.replace(/\buseRef\(/g, 'React.useRef(');
+        combined = combined.replace(/\buseContext\(/g, 'React.useContext(');
+        combined = combined.replace(/\buseReducer\(/g, 'React.useReducer(');
+      }
+      
+      if (combined.includes('createElement(') && !combined.includes('React.createElement(')) {
+        console.warn('Fixing createElement syntax in combined code...');
+        combined = combined.replace(/\bcreateElement\(/g, 'React.createElement(');
+      }
+      
+      // Fix potential class/className issues
+      const originalCombined = combined;
+      
+      // Pattern 1: { class: 'value' } or { class: "value" }
+      combined = combined.replace(/{\s*class\s*:\s*(['"])/g, '{ className: $1');
+      
+      // Pattern 2: , class: 'value' or , class: "value"
+      combined = combined.replace(/,\s*class\s*:\s*(['"])/g, ', className: $1');
+      
+      // Pattern 3: "class": or 'class': (quoted key)
+      combined = combined.replace(/["']class["']\s*:/g, '"className":');
+      
+      // Pattern 4: Plain class: at start of line or after whitespace
+      combined = combined.replace(/(\s)class\s*:\s*/g, '$1className: ');
+      
+      // Pattern 5: More aggressive - any object property "class"
+      combined = combined.replace(/([,{]\s*)class(\s*:)/g, '$1className$2');
+      
+      // Pattern 6: Nuclear option - replace ALL instances of standalone "class"
+      // This is our safety net
+      combined = combined.replace(/\bclass\b(?!Name)/g, 'className');
+      
+      if (combined !== originalCombined) {
+        console.warn('Fixed class/className issues in combined code');
+      }
+      
+      // Final safety check - look for any remaining "class" keywords
+      const remainingClassMatches = combined.match(/\bclass\b(?!Name)/g);
+      if (remainingClassMatches) {
+        console.error(`Still found ${remainingClassMatches.length} instances of "class" after fixes!`);
+        
+        // Try to find and show context
+        const classRegex = /\bclass\b(?!Name)/g;
+        let match;
+        let count = 0;
+        while ((match = classRegex.exec(combined)) !== null && count < 3) {
+          const start = Math.max(0, match.index - 50);
+          const end = Math.min(combined.length, match.index + 50);
+          console.error(`Instance ${count + 1} at position ${match.index}:`);
+          console.error(`  Context: "${combined.substring(start, end).replace(/\n/g, '\\n')}"`);
+          count++;
+        }
+        
+        // Last resort - try to fix any pattern we might have missed
+        combined = combined.replace(/\bclass\b(?!Name)/g, 'className');
+        console.warn('Applied last resort fix: replaced all remaining "class" with "className"');
+      }
+      
+      // If no window.App found, check if there's an App component to assign
+      if (!combined.includes('window.App')) {
+        console.warn('No window.App assignment found in combined code');
+        // Try to find App component and add assignment
+        if (combined.includes('const App =') || combined.includes('function App')) {
+          console.log('Found App component, adding window.App assignment');
+          combined = combined + '\n\nwindow.App = App;';
+        } else {
+          console.error('No App component found in combined code!');
+          // Look for the main file's component
+          const mainFile = sortedFiles.find(f => f.type === 'main');
+          if (mainFile) {
+            console.log('Main file content preview:', mainFile.content.substring(0, 200));
+          }
+        }
+      }
+      
+      // Log final combined code info
+      console.log('Combined code includes window.App?', combined.includes('window.App'));
+      console.log('Combined code includes const App?', combined.includes('const App'));
+      
+      return combined;
     }
     
     // Fall back to single file
@@ -773,7 +1028,25 @@ window.App = (() => {
                 Code
               </button>
               
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={handleRetryGeneration}
+                  disabled={isGenerating}
+                  className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                  title="Regenerate UI with new variations"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Regenerating...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      Regenerate
+                    </>
+                  )}
+                </button>
                 <button
                   onClick={handleCopyCode}
                   className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
@@ -808,10 +1081,20 @@ window.App = (() => {
                             </button>
                             <button
                               onClick={handleRetryGeneration}
-                              className="flex items-center gap-1 text-sm px-3 py-1 bg-blue-100 dark:bg-blue-800 hover:bg-blue-200 dark:hover:bg-blue-700 rounded transition-colors"
+                              disabled={isGenerating}
+                              className="flex items-center gap-1 text-sm px-3 py-1 bg-blue-100 dark:bg-blue-800 hover:bg-blue-200 dark:hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
                             >
-                              <RefreshCw className="w-3 h-3" />
-                              Retry Generation
+                              {isGenerating ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  Regenerating...
+                                </>
+                              ) : (
+                                <>
+                                  <RefreshCw className="w-3 h-3" />
+                                  Retry Generation
+                                </>
+                              )}
                             </button>
                           </div>
                         </div>
@@ -846,35 +1129,93 @@ window.App = (() => {
                 )}
               </div>
             ) : (
-              <div className="h-full flex flex-col">
-                {/* File tabs if multiple files exist */}
+              <div className="h-full flex">
+                {/* File tree sidebar if multiple files exist */}
                 {currentProjectData.uiFiles && currentProjectData.uiFiles.length > 0 ? (
                   <>
-                    <div className="flex gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-                      {currentProjectData.uiFiles.map(file => (
-                        <button
-                          key={file.filename}
-                          onClick={() => setSelectedFile(file.filename)}
-                          className={`px-3 py-1 text-sm rounded-md whitespace-nowrap transition-colors ${
-                            (selectedFile || currentProjectData.uiFiles![0].filename) === file.filename
-                              ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
-                              : 'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'
-                          }`}
-                        >
-                          {file.filename}
-                        </button>
-                      ))}
+                    <div className="w-64 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+                      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Files</h3>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {currentProjectData.uiFiles.length} {currentProjectData.uiFiles.length === 1 ? 'file' : 'files'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex-1 overflow-y-auto">
+                        <div className="p-2 space-y-1">
+                          {/* Optional: Add a folder structure header */}
+                          <div className="flex items-center gap-2 px-3 py-1 text-xs text-gray-500 dark:text-gray-400">
+                            <Folder className="w-3 h-3" />
+                            <span>src/components</span>
+                          </div>
+                          
+                          {currentProjectData.uiFiles.map(file => {
+                            const isSelected = (selectedFile || currentProjectData.uiFiles![0].filename) === file.filename;
+                            const FileIcon = file.type === 'main' || file.filename.toLowerCase().includes('app') 
+                              ? FileCode2 
+                              : FileCode;
+                            
+                            return (
+                              <button
+                                key={file.filename}
+                                onClick={() => setSelectedFile(file.filename)}
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all duration-150 ${
+                                  isSelected
+                                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 shadow-sm'
+                                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
+                                }`}
+                              >
+                                <FileIcon className={`w-4 h-4 flex-shrink-0 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'}`} />
+                                <span className="truncate text-left flex-1">{file.filename}</span>
+                                {file.type === 'main' && (
+                                  <span className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded">
+                                    main
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
-                      <CodeEditor 
-                        value={
-                          currentProjectData.uiFiles.find(f => f.filename === (selectedFile || currentProjectData.uiFiles![0].filename))?.content || ''
-                        } 
-                      />
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                      <div className="px-4 py-3 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <FileCode className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              {selectedFile || currentProjectData.uiFiles[0].filename}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                const file = currentProjectData.uiFiles?.find(f => f.filename === (selectedFile || currentProjectData.uiFiles![0].filename));
+                                if (file) {
+                                  navigator.clipboard.writeText(file.content);
+                                  toast.success(`Copied ${file.filename}!`);
+                                }
+                              }}
+                              className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                              title="Copy this file"
+                            >
+                              <Copy className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
+                        <CodeEditor 
+                          value={
+                            currentProjectData.uiFiles.find(f => f.filename === (selectedFile || currentProjectData.uiFiles![0].filename))?.content || ''
+                          } 
+                        />
+                      </div>
                     </div>
                   </>
                 ) : (
-                  <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+                  <div className="w-full h-full overflow-auto bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
                     <CodeEditor value={currentProjectData.uiCode || ''} />
                   </div>
                 )}
@@ -882,6 +1223,30 @@ window.App = (() => {
             )}
           </div>
         </>
+      )}
+      
+      {/* Progress Display during regeneration */}
+      {isGenerating && (
+        <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
+          <h3 className="font-semibold mb-2">Regeneration Progress</h3>
+          <div className="space-y-2 max-h-32 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600">
+            {generationProgress.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">Starting regeneration...</p>
+            ) : (
+              generationProgress.map((progress, index) => (
+                <div key={`${progress.node}-${index}`} className="flex items-center gap-2 text-sm py-1">
+                  {progress.status === 'in-progress' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                  {progress.status === 'success' && <span className="text-green-600">✓</span>}
+                  {progress.status === 'error' && <span className="text-red-600">✗</span>}
+                  <span className={progress.status === 'success' ? 'text-gray-600 dark:text-gray-400' : ''}>
+                    {progress.node}
+                  </span>
+                  {progress.message && <span className="text-gray-500 dark:text-gray-400">- {progress.message}</span>}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

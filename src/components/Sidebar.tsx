@@ -89,8 +89,8 @@ export default function Sidebar() {
           {projects.length === 0 ? (
             <div className="text-center py-8 text-gray-500 dark:text-gray-400">
               <Folder className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No projects yet</p>
-              <p className="text-xs">Create your first project!</p>
+              <p className="text-sm">No React apps yet</p>
+              <p className="text-xs">Create your first React app!</p>
             </div>
           ) : (
             <div className="space-y-1">
