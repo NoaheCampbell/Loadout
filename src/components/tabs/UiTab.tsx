@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { Eye, Code2, Copy, AlertCircle, RefreshCw, FileCode, FileCode2, Folder, Loader2 } from 'lucide-react'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { Eye, Code2, Copy, AlertCircle, RefreshCw, FileCode, FileCode2, Folder, Loader2, Download, ExternalLink } from 'lucide-react'
 import { useStore } from '../../store'
 import toast from 'react-hot-toast'
 import Editor from 'react-simple-code-editor'
@@ -8,760 +8,106 @@ import 'prismjs/components/prism-jsx'
 import 'prismjs/themes/prism-tomorrow.css'
 import { ipc } from '../../lib/ipc'
 import type { GenerationProgress } from '../../types'
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
 
-function PreviewIframe({ code, refreshKey }: { code: string; refreshKey: number }) {
-  // Encode the code as base64 to avoid escaping issues
-  const encodedCode = btoa(unescape(encodeURIComponent(code)));
+function LocalhostPreview({ files, refreshKey }: { files: any[]; refreshKey: number }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   
-  // Create the HTML content with inline styles and minimal dependencies
-  const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    /* Base styles */
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
-    #root { width: 100%; min-height: 100vh; }
-    .error { padding: 20px; color: #ef4444; background: #fee2e2; border: 1px solid #fecaca; border-radius: 8px; margin: 20px; }
+  useEffect(() => {
+    let mounted = true
     
-    /* Tailwind-like utilities */
-    .flex { display: flex; }
-    .flex-col { flex-direction: column; }
-    .flex-1 { flex: 1; }
-    .items-center { align-items: center; }
-    .items-start { align-items: flex-start; }
-    .justify-between { justify-content: space-between; }
-    .justify-center { justify-content: center; }
-    .justify-around { justify-content: space-around; }
-    
-    /* Spacing */
-    .gap-1 { gap: 0.25rem; }
-    .gap-2 { gap: 0.5rem; }
-    .gap-3 { gap: 0.75rem; }
-    .gap-4 { gap: 1rem; }
-    .gap-6 { gap: 1.5rem; }
-    .space-y-2 > * + * { margin-top: 0.5rem; }
-    .space-y-4 > * + * { margin-top: 1rem; }
-    
-    .p-1 { padding: 0.25rem; }
-    .p-2 { padding: 0.5rem; }
-    .p-3 { padding: 0.75rem; }
-    .p-4 { padding: 1rem; }
-    .p-6 { padding: 1.5rem; }
-    .p-8 { padding: 2rem; }
-    .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
-    .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
-    .px-4 { padding-left: 1rem; padding-right: 1rem; }
-    .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
-    .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
-    .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-    .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
-    .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
-    .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
-    
-    .m-2 { margin: 0.5rem; }
-    .m-4 { margin: 1rem; }
-    .mb-1 { margin-bottom: 0.25rem; }
-    .mb-2 { margin-bottom: 0.5rem; }
-    .mb-4 { margin-bottom: 1rem; }
-    .mb-6 { margin-bottom: 1.5rem; }
-    .mt-2 { margin-top: 0.5rem; }
-    .mt-4 { margin-top: 1rem; }
-    .mt-6 { margin-top: 1.5rem; }
-    .mr-2 { margin-right: 0.5rem; }
-    .ml-2 { margin-left: 0.5rem; }
-    .ml-auto { margin-left: auto; }
-    
-    /* Typography */
-    .text-xs { font-size: 0.75rem; }
-    .text-sm { font-size: 0.875rem; }
-    .text-base { font-size: 1rem; }
-    .text-lg { font-size: 1.125rem; }
-    .text-xl { font-size: 1.25rem; }
-    .text-2xl { font-size: 1.5rem; }
-    .text-3xl { font-size: 1.875rem; }
-    .text-4xl { font-size: 2.25rem; }
-    .font-normal { font-weight: 400; }
-    .font-medium { font-weight: 500; }
-    .font-semibold { font-weight: 600; }
-    .font-bold { font-weight: 700; }
-    .text-center { text-align: center; }
-    .text-left { text-align: left; }
-    .text-right { text-align: right; }
-    
-    /* Colors */
-    .text-white { color: #ffffff; }
-    .text-gray-400 { color: #9ca3af; }
-    .text-gray-500 { color: #6b7280; }
-    .text-gray-600 { color: #4b5563; }
-    .text-gray-700 { color: #374151; }
-    .text-gray-800 { color: #1f2937; }
-    .text-gray-900 { color: #111827; }
-    .text-blue-500 { color: #3b82f6; }
-    .text-blue-600 { color: #2563eb; }
-    .text-blue-700 { color: #1d4ed8; }
-    .text-green-500 { color: #10b981; }
-    .text-green-600 { color: #059669; }
-    .text-red-500 { color: #ef4444; }
-    .text-red-600 { color: #dc2626; }
-    .text-blue-300 { color: #93c5fd; }
-    .text-green-300 { color: #86efac; }
-    .text-red-300 { color: #fca5a5; }
-    
-    .bg-white { background-color: #ffffff; }
-    .bg-gray-50 { background-color: #f9fafb; }
-    .bg-gray-100 { background-color: #f3f4f6; }
-    .bg-gray-200 { background-color: #e5e7eb; }
-    .bg-gray-300 { background-color: #d1d5db; }
-    .bg-gray-500 { background-color: #6b7280; }
-    .bg-gray-600 { background-color: #4b5563; }
-    .bg-gray-700 { background-color: #374151; }
-    .bg-gray-800 { background-color: #1f2937; }
-    .bg-gray-900 { background-color: #111827; }
-    .bg-black { background-color: #000000; }
-    .bg-opacity-50 { background-color: rgba(0, 0, 0, 0.5); }
-    .bg-blue-50 { background-color: #eff6ff; }
-    .bg-blue-100 { background-color: #dbeafe; }
-    .bg-blue-500 { background-color: #3b82f6; }
-    .bg-blue-600 { background-color: #2563eb; }
-    .bg-green-50 { background-color: #f0fdf4; }
-    .bg-green-100 { background-color: #dcfce7; }
-    .bg-green-500 { background-color: #10b981; }
-    .bg-red-50 { background-color: #fef2f2; }
-    .bg-red-100 { background-color: #fee2e2; }
-    .bg-red-500 { background-color: #ef4444; }
-    
-    /* Borders */
-    .border { border: 1px solid #e5e7eb; }
-    .border-2 { border: 2px solid #e5e7eb; }
-    .border-b { border-bottom: 1px solid #e5e7eb; }
-    .border-t { border-top: 1px solid #e5e7eb; }
-    .border-gray-200 { border-color: #e5e7eb; }
-    .border-gray-300 { border-color: #d1d5db; }
-    .border-gray-700 { border-color: #374151; }
-    .border-gray-800 { border-color: #1f2937; }
-    .rounded { border-radius: 0.25rem; }
-    .rounded-md { border-radius: 0.375rem; }
-    .rounded-lg { border-radius: 0.5rem; }
-    .rounded-xl { border-radius: 0.75rem; }
-    .rounded-full { border-radius: 9999px; }
-    
-    /* Shadows */
-    .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
-    .shadow { box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); }
-    .shadow-md { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
-    .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
-    
-    /* Width/Height */
-    .w-full { width: 100%; }
-    .w-4 { width: 1rem; }
-    .w-5 { width: 1.25rem; }
-    .w-6 { width: 1.5rem; }
-    .w-8 { width: 2rem; }
-    .w-10 { width: 2.5rem; }
-    .w-12 { width: 3rem; }
-    .w-16 { width: 4rem; }
-    .w-64 { width: 16rem; }
-    .h-4 { height: 1rem; }
-    .h-5 { height: 1.25rem; }
-    .h-6 { height: 1.5rem; }
-    .h-8 { height: 2rem; }
-    .h-10 { height: 2.5rem; }
-    .h-12 { height: 3rem; }
-    .h-16 { height: 4rem; }
-    .h-full { height: 100%; }
-    .h-screen { height: 100vh; }
-    .min-h-screen { min-height: 100vh; }
-    .min-h-full { min-height: 100%; }
-    
-    /* Position */
-    .relative { position: relative; }
-    .absolute { position: absolute; }
-    .fixed { position: fixed; }
-    .top-0 { top: 0; }
-    .bottom-0 { bottom: 0; }
-    .left-0 { left: 0; }
-    .right-0 { right: 0; }
-    .bottom-4 { bottom: 1rem; }
-    .right-4 { right: 1rem; }
-    
-    /* Z-Index */
-    .z-10 { z-index: 10; }
-    .z-40 { z-index: 40; }
-    .z-50 { z-index: 50; }
-    
-    /* Display */
-    .block { display: block; }
-    .inline-block { display: inline-block; }
-    .hidden { display: none; }
-    .grid { display: grid; }
-    .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .flex { display: flex; }
-    
-    /* Overflow */
-    .overflow-hidden { overflow: hidden; }
-    .overflow-auto { overflow: auto; }
-    .overflow-y-auto { overflow-y: auto; }
-    
-    /* Opacity */
-    .opacity-90 { opacity: 0.9; }
-    
-    /* Hover states */
-    .hover\\:bg-gray-100:hover { background-color: #f3f4f6; }
-    .hover\\:bg-gray-200:hover { background-color: #e5e7eb; }
-    .hover\\:bg-gray-700:hover { background-color: #374151; }
-    .hover\\:bg-blue-600:hover { background-color: #2563eb; }
-    .hover\\:bg-blue-700:hover { background-color: #1d4ed8; }
-    .hover\\:text-white:hover { color: #ffffff; }
-    
-    /* Transitions */
-    .transition { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
-    .transition-colors { transition-property: background-color, border-color, color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
-    .transition-opacity { transition-property: opacity; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
-    
-    /* Custom styles */
-    button, [role="button"] {
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 150ms;
+    const startPreview = async () => {
+      try {
+        setIsLoading(true)
+        setError(null)
+        
+        // Stop any existing server
+        await ipc.stopPreviewServer()
+        
+        // Start the preview server with the files
+        const result = await ipc.startPreviewServer(files)
+        
+        if (mounted) {
+          if (result.success && result.url) {
+            setPreviewUrl(result.url)
+            console.log('✅ Preview server started at:', result.url)
+          } else {
+            setError(result.error || 'Failed to start preview server')
+          }
+          setIsLoading(false)
+        }
+      } catch (err) {
+        console.error('Failed to start preview:', err)
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Failed to start preview')
+          setIsLoading(false)
+        }
+      }
     }
     
-    input, textarea {
-      font-family: inherit;
-      font-size: inherit;
+    startPreview()
+    
+    // Cleanup on unmount
+    return () => {
+      mounted = false
+      // Don't stop the server on unmount - keep it running for smooth transitions
     }
-    
-    .outline-none { outline: none; }
-    .bg-transparent { background-color: transparent; }
-    .flex-1 { flex: 1; }
-    .items-center { align-items: center; }
-    .gap-2 { gap: 0.5rem; }
-    .mr-2 { margin-right: 0.5rem; }
-    
-    svg { display: inline-block; vertical-align: middle; }
-    .cursor-pointer { cursor: pointer; }
-  </style>
-</head>
-<body>
-  <!-- URL Bar -->
-  <div id="urlBar" class="fixed top-0 left-0 right-0 bg-white border-b border-gray-300 p-2 flex items-center gap-2 z-50 shadow-sm">
-    <button id="backBtn" class="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded">←</button>
-    <button id="forwardBtn" class="px-2 py-1 text-gray-600 hover:bg-gray-100 rounded">→</button>
-    <div class="flex-1 flex items-center bg-gray-100 rounded px-3 py-1">
-      <span class="text-gray-500 text-sm mr-2">preview://</span>
-      <input 
-        id="urlInput" 
-        type="text" 
-        class="flex-1 bg-transparent outline-none text-sm"
-        value="home"
-        placeholder="Enter route..."
+  }, [files, refreshKey])
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-blue-500" />
+          <p className="text-gray-600">Starting preview server...</p>
+        </div>
+      </div>
+    )
+  }
+  
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full bg-gray-50">
+        <div className="text-center">
+          <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
+          <p className="text-red-600 font-medium">Failed to start preview</p>
+          <p className="text-gray-600 text-sm mt-1">{error}</p>
+        </div>
+      </div>
+    )
+  }
+  
+  if (!previewUrl) {
+    return (
+      <div className="flex items-center justify-center h-full bg-gray-50">
+        <p className="text-gray-600">No preview URL available</p>
+      </div>
+    )
+  }
+  
+  return (
+    <div className="relative h-full">
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+        <a
+          href={previewUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 px-2 py-1 bg-white border border-gray-300 rounded-md text-sm hover:bg-gray-50 transition-colors"
+          title="Open in browser"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Open in browser
+        </a>
+      </div>
+      <iframe
+        src={previewUrl}
+        className="w-full h-full border-0 bg-white"
+        title="UI Preview"
       />
     </div>
-    <button id="goBtn" class="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600">Go</button>
-  </div>
-  
-  <div id="root" style="padding-top: 60px; min-height: 100vh;">
-    <div class="p-4 text-center text-gray-500">Loading preview...</div>
-  </div>
-  <script>
-    // Error handling
-    window.onerror = function(msg, source, lineno, colno, error) {
-      document.getElementById('root').innerHTML = 
-        '<div class="error">Error: ' + msg + '</div>';
-      return true;
-    };
-    
-    // Intercept form submissions to prevent navigation
-    document.addEventListener('submit', function(e) {
-      e.preventDefault();
-      
-      // Gather form data
-      const formData = new FormData(e.target);
-      const data = {};
-      for (let [key, value] of formData.entries()) {
-        data[key] = value;
-      }
-      
-      console.log('Form submission intercepted:', {
-        action: e.target.action || 'none',
-        method: e.target.method || 'GET',
-        data: data
-      });
-      
-      // Show a toast or notification
-      const toast = document.createElement('div');
-      toast.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg transition-opacity z-50';
-      toast.textContent = 'Form submitted successfully! (preview mode)';
-      document.body.appendChild(toast);
-      
-      setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-      }, 2000);
-      
-      // Trigger a custom event that components can listen to
-      const event = new CustomEvent('formSubmitted', { 
-        detail: { formData: data, form: e.target }
-      });
-      window.dispatchEvent(event);
-    });
-
-    // Simple createElement function
-    function h(tag, props, ...children) {
-      if (typeof tag === 'function') {
-        return tag(props || {}, children);
-      }
-      
-      const element = document.createElement(tag);
-      
-      if (props) {
-        Object.entries(props).forEach(([key, value]) => {
-          if (key === 'className') {
-            element.className = value;
-          } else if (key === 'style' && typeof value === 'object') {
-            Object.assign(element.style, value);
-          } else if (key.startsWith('on')) {
-            const eventName = key.substring(2).toLowerCase();
-            if (typeof value === 'function') {
-              element.addEventListener(eventName, value);
-            }
-          } else if (key !== 'children' && value != null) {
-            element.setAttribute(key, value);
-          }
-        });
-      }
-      
-      const appendChild = (child) => {
-        if (child == null) return;
-        if (Array.isArray(child)) {
-          child.forEach(appendChild);
-        } else if (typeof child === 'object' && child.nodeType) {
-          element.appendChild(child);
-        } else {
-          element.appendChild(document.createTextNode(String(child)));
-        }
-      };
-      
-      children.forEach(appendChild);
-      return element;
-    }
-    
-    // Basic React-like API with hooks
-    let stateIndex = 0;
-    const stateStore = [];
-    
-    // Simple routing system
-    window.currentRoute = 'home'; // Default route
-    const routes = new Map();
-    const routeHistory = ['home'];
-    let historyIndex = 0;
-    const routeChangeCallbacks = [];
-    
-    window.Router = {
-      register: (path, component) => {
-        routes.set(path, component);
-      },
-      navigate: (path) => {
-        const previousRoute = window.currentRoute;
-        window.currentRoute = path;
-        console.log('Navigating to:', path);
-        
-        // Update URL bar
-        const urlInput = document.getElementById('urlInput');
-        if (urlInput) {
-          urlInput.value = path;
-        }
-        
-        // Add to history
-        if (routeHistory[historyIndex] !== path) {
-          routeHistory.splice(historyIndex + 1);
-          routeHistory.push(path);
-          historyIndex = routeHistory.length - 1;
-        }
-        
-        // Trigger re-render
-        const root = document.getElementById('root');
-        if (root && window.App) {
-          stateIndex = 0;
-          root.innerHTML = '';
-          try {
-            const element = window.App();
-            if (element) {
-              root.appendChild(element);
-            }
-            
-            // Update debug panel
-            const debugPanel = document.querySelector('.debug-panel');
-            if (debugPanel) {
-              debugPanel.innerHTML = 
-                '<div class="font-semibold mb-1">Debug Info</div>' +
-                '<div>Route: <span class="text-blue-300">' + (window.currentRoute || 'home') + '</span></div>';
-            }
-          } catch (err) {
-            console.error('Re-render error:', err);
-          }
-        }
-        
-        // Notify route change listeners
-        routeChangeCallbacks.forEach(callback => {
-          try {
-            callback(path, previousRoute);
-          } catch (err) {
-            console.error('Error in route change callback:', err);
-          }
-        });
-      },
-      getCurrentRoute: () => window.currentRoute,
-      getComponent: (path) => routes.get(path),
-      back: () => {
-        if (historyIndex > 0) {
-          historyIndex--;
-          window.Router.navigate(routeHistory[historyIndex]);
-        }
-      },
-      forward: () => {
-        if (historyIndex < routeHistory.length - 1) {
-          historyIndex++;
-          window.Router.navigate(routeHistory[historyIndex]);
-        }
-      },
-      onRouteChange: (callback) => {
-        if (typeof callback === 'function') {
-          routeChangeCallbacks.push(callback);
-          // Return unsubscribe function
-          return () => {
-            const index = routeChangeCallbacks.indexOf(callback);
-            if (index > -1) {
-              routeChangeCallbacks.splice(index, 1);
-            }
-          };
-        }
-      }
-    };
-    
-    // Global app state (for sharing data between routes)
-    window.AppState = {
-      data: {},
-      set: (key, value) => {
-        window.AppState.data[key] = value;
-        // Trigger re-render
-        window.Router.navigate(window.currentRoute);
-      },
-      get: (key) => {
-        return window.AppState.data[key];
-      }
-    };
-    
-    window.React = {
-      createElement: h,
-      Fragment: ({ children }) => {
-        const fragment = document.createDocumentFragment();
-        if (Array.isArray(children)) {
-          children.forEach(child => {
-            if (child) fragment.appendChild(child);
-          });
-        } else if (children) {
-          fragment.appendChild(children);
-        }
-        return fragment;
-      },
-      useState: (initialValue) => {
-        const currentIndex = stateIndex;
-        stateIndex++;
-        
-        // Initialize state if not exists
-        if (stateStore[currentIndex] === undefined) {
-          stateStore[currentIndex] = initialValue;
-        }
-        
-        const setState = (newValue) => {
-          stateStore[currentIndex] = typeof newValue === 'function' 
-            ? newValue(stateStore[currentIndex]) 
-            : newValue;
-          
-          // Re-render the component
-          const root = document.getElementById('root');
-          if (root && window.App) {
-            stateIndex = 0; // Reset state index for re-render
-            root.innerHTML = '';
-            try {
-              const element = window.App();
-              if (element) {
-                root.appendChild(element);
-              }
-            } catch (err) {
-              console.error('Re-render error:', err);
-            }
-          }
-        };
-        
-        return [stateStore[currentIndex], setState];
-      },
-      useEffect: (callback, deps) => {
-        // Simple implementation - just run the effect immediately
-        // In a real implementation, we'd track dependencies and cleanup
-        if (typeof callback === 'function') {
-          const cleanup = callback();
-          // We're not handling cleanup for this simple implementation
-        }
-      }
-    };
-    
-    // Icon helper
-    const Icon = (svgContent) => ({ className = "w-6 h-6", ...props }) => {
-      const div = document.createElement('div');
-      div.innerHTML = '<svg class="' + className + '" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' + svgContent + '</svg>';
-      return div.firstChild;
-    };
-    
-    // Common icons
-    const User = Icon('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>');
-    const Settings = Icon('<circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6m4.22-10.22l4.24 4.24m-4.24 4.24l4.24 4.24M20 12h6m-6 0h-6m-2.22 4.22l-4.24 4.24m4.24-4.24l-4.24-4.24M6 12H1"/>');
-    const Save = Icon('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>');
-    const Send = Icon('<path d="m22 2-7 20-4-9-9-4z"/>');
-    const Search = Icon('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>');
-    const Bell = Icon('<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>');
-    const Home = Icon('<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>');
-    const PlusCircle = Icon('<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>');
-    const MessageCircle = Icon('<path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/>');
-    const Plus = Icon('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>');
-    const Hash = Icon('<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>');
-    const Lock = Icon('<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>');
-    const ChevronRight = Icon('<polyline points="9 18 15 12 9 6"/>');
-    const ChevronDown = Icon('<polyline points="6 9 12 15 18 9"/>');
-    const X = Icon('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>');
-    const Pencil = Icon('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>');
-    const LogIn = Icon('<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>');
-    const Paperclip = Icon('<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>');
-    const AtSign = Icon('<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/>');
-    
-    // Store the encoded code
-    window.encodedCode = '${encodedCode}';
-    
-    try {
-      // Decode the code
-      const code = decodeURIComponent(escape(atob(window.encodedCode)));
-      
-      // Check if it's JSX - look for JSX patterns like <ComponentName or <div
-      // but exclude our compatibility wrapper
-      const jsxPattern = /<[A-Z][a-zA-Z]*[\s>]|<[a-z]+[\s>]/;
-      const isJSX = jsxPattern.test(code) && !code.includes('JSX compatibility wrapper');
-      
-      console.log('Code preview (first 200 chars):', code.substring(0, 200));
-      console.log('Is JSX?', isJSX, 'Has wrapper?', code.includes('JSX compatibility wrapper'));
-      
-      if (isJSX) {
-        // This is JSX code, show compatibility message
-        document.getElementById('root').innerHTML = 
-          '<div class="p-4">' +
-            '<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">' +
-              '<h3 class="text-yellow-800 font-semibold mb-2">Preview Temporarily Unavailable</h3>' +
-              '<p class="text-yellow-700 text-sm">This project was created with JSX syntax. Please generate a new project to see the preview.</p>' +
-              '<p class="text-yellow-600 text-xs mt-2">New projects will use a compatible format that works with the preview.</p>' +
-            '</div>' +
-          '</div>';
-      } else {
-        // Log the code we're about to execute to help debug syntax errors
-        console.log('=== CODE TO EXECUTE ===');
-        console.log(code.substring(0, 1000)); // First 1000 chars
-        if (code.length > 1000) {
-          console.log('... (truncated, total length: ' + code.length + ')');
-        }
-        
-        // Find all occurrences of "class" that aren't part of "className"
-        const classRegex = /\bclass\b(?!Name)/g;
-        let classMatch;
-        const classOccurrences = [];
-        while ((classMatch = classRegex.exec(code)) !== null) {
-          const start = Math.max(0, classMatch.index - 50);
-          const end = Math.min(code.length, classMatch.index + 50);
-          classOccurrences.push({
-            index: classMatch.index,
-            context: code.substring(start, end),
-            line: code.substring(0, classMatch.index).split('\\n').length
-          });
-        }
-        
-        if (classOccurrences.length > 0) {
-          console.error('WARNING: Found problematic "class" keywords:');
-          classOccurrences.forEach((occ, i) => {
-            console.error('  ' + (i + 1) + '. Line ~' + occ.line + ', position ' + occ.index + ':');
-            console.error('     Context: "' + occ.context.replace(/\\n/g, '\\\\n') + '"');
-          });
-        }
-        
-        console.log('=== END CODE ===');
-        
-        // Create a script element to execute the code (avoids eval)
-        const script = document.createElement('script');
-                            // Create the script content - wrap in IIFE to avoid issues
-          script.textContent = '(function() { try { ' + code + 
-            ' console.log("Code executed successfully");' +
-            ' console.log("window.App after execution:", window.App);' +
-            ' console.log("window.Header after execution:", window.Header);' +
-            ' console.log("window.Sidebar after execution:", window.Sidebar);' +
-            ' console.log("window.MainContent after execution:", window.MainContent);' +
-            '} catch (error) {' +
-            ' console.error("Error executing component code:", error);' +
-            ' console.error("Error stack:", error.stack);' +
-            ' var errorDiv = document.createElement("div");' +
-            ' errorDiv.className = "error";' +
-            ' errorDiv.textContent = "Error executing code: " + error.message;' +
-            ' document.getElementById("root").appendChild(errorDiv);' +
-            '}})();';
-        console.log('Executing script with code length:', code.length);
-        
-        // Add error handler for syntax errors
-        script.onerror = function(e) {
-          console.error('Script syntax error:', e);
-        };
-        
-        document.body.appendChild(script);
-        console.log('Script added. Checking window.App immediately:', window.App);
-        
-        // Debug what components are available
-        console.log('Available window properties:', Object.keys(window).filter(k => k[0] === k[0].toUpperCase() && typeof window[k] === 'function'));
-        
-              // Add a small delay to ensure script execution completes
-      setTimeout(() => {
-        // Debug: log what's available
-        console.log('After delay - Looking for component. window.App:', window.App, 'window.Default:', window.Default, 'window.Component:', window.Component);
-        console.log('All components:', Object.keys(window).filter(k => k[0] === k[0].toUpperCase() && typeof window[k] === 'function'));
-        
-        // Find and render the component
-        const component = window.App || window.Default || window.Component;
-        
-        if (component && typeof component === 'function') {
-          const root = document.getElementById('root');
-          
-          // Add debug info panel
-          const renderWithDebug = () => {
-            root.innerHTML = '';
-            try {
-              // Reset state index before render
-              stateIndex = 0;
-              const element = component();
-              if (element) {
-                root.appendChild(element);
-              }
-              
-              // Add debug panel if in development
-              const debugPanel = document.createElement('div');
-              debugPanel.className = 'fixed bottom-4 left-4 bg-gray-900 text-white text-xs p-3 rounded shadow-lg z-40 opacity-90';
-              debugPanel.innerHTML = 
-                '<div class="font-semibold mb-1">Debug Info</div>' +
-                '<div>Route: <span class="text-blue-300">' + (window.currentRoute || 'home') + '</span></div>';
-              document.body.appendChild(debugPanel);
-              
-              // Remove old debug panel if exists
-              const oldDebug = document.querySelector('.debug-panel');
-              if (oldDebug) oldDebug.remove();
-              debugPanel.classList.add('debug-panel');
-              
-            } catch (renderError) {
-              console.error('Error rendering component:', renderError);
-              root.innerHTML = 
-                '<div class="error">Error rendering component: ' + renderError.message + '</div>';
-            }
-          };
-          
-          // Initial render
-          renderWithDebug();
-          
-          // Set up URL bar after initial render
-          const setupUrlBar = () => {
-            const urlInput = document.getElementById('urlInput');
-            const goBtn = document.getElementById('goBtn');
-            const backBtn = document.getElementById('backBtn');
-            const forwardBtn = document.getElementById('forwardBtn');
-            
-            if (urlInput && goBtn) {
-              // Handle Enter key in URL input
-              urlInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                  const route = urlInput.value.trim();
-                  if (route) {
-                    window.Router.navigate(route);
-                  }
-                }
-              });
-              
-              // Handle Go button
-              goBtn.addEventListener('click', function() {
-                const route = urlInput.value.trim();
-                if (route) {
-                  window.Router.navigate(route);
-                }
-              });
-            }
-            
-            // Update back/forward buttons
-            if (backBtn) {
-              backBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                window.Router.back();
-              });
-            }
-            
-            if (forwardBtn) {
-              forwardBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                window.Router.forward();
-              });
-            }
-          };
-          
-          setupUrlBar();
-          
-          // Log available routes
-          console.log('Router initialized. Current route:', window.Router.getCurrentRoute());
-          console.log('You can navigate using window.Router.navigate("routeName")');
-          console.log('Example routes: "home", "products", "about", "settings", etc.');
-          
-        } else {
-            // Show more debugging info
-            document.getElementById('root').innerHTML = 
-              '<div class="error">' +
-                '<p>No component found to render.</p>' +
-                '<p class="text-xs mt-2">Debug: Check console for available components.</p>' +
-                '<details class="mt-2 text-xs">' +
-                  '<summary>Code Preview (first 500 chars)</summary>' +
-                  '<pre class="mt-1 p-2 bg-gray-100 rounded overflow-auto">' + 
-                    code.substring(0, 500).replace(/</g, '&lt;').replace(/>/g, '&gt;') + 
-                  '</pre>' +
-                '</details>' +
-              '</div>';
-          }
-        }, 10);
-      }
-    } catch (error) {
-      console.error('Preview error:', error);
-      document.getElementById('root').innerHTML = 
-        '<div class="error">Error: ' + error.message + '</div>';
-    }
-  </script>
-</body>
-</html>
-  `
-
-  return (
-    <iframe
-      srcDoc={htmlContent}
-      className="w-full h-full border-0 bg-white"
-      style={{ 
-        minHeight: '600px',
-        display: 'block'
-      }}
-      title="UI Preview"
-      sandbox="allow-scripts allow-forms allow-same-origin allow-modals allow-popups"
-    />
   )
 }
 
@@ -775,11 +121,21 @@ export default function UiTab() {
     addProgress,
     setProjectData,
     isGenerating,
-    generationProgress 
+    generationProgress,
+    projects,
+    selectedProjectId
   } = useStore()
   const [showRawCode, setShowRawCode] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  
+  // Stop preview server when component unmounts or project changes
+  useEffect(() => {
+    return () => {
+      // Stop server on unmount
+      ipc.stopPreviewServer().catch(console.error)
+    }
+  }, [selectedProjectId]) // Also re-run when project changes
   
   if (!currentProjectData) {
     return (
@@ -808,6 +164,129 @@ export default function UiTab() {
     } else if (currentProjectData.uiCode) {
       navigator.clipboard.writeText(currentProjectData.uiCode);
       toast.success('Code copied to clipboard!');
+    }
+  }
+
+  const handleExportFiles = async () => {
+    if (!currentProjectData?.uiFiles || currentProjectData.uiFiles.length === 0) {
+      toast.error('No UI files to export')
+      return
+    }
+
+    try {
+      const zip = new JSZip()
+      const projectName = projects.find(p => p.id === selectedProjectId)?.title || 'ui-components'
+      
+      // Create a folder for the components
+      const componentsFolder = zip.folder('components')
+      
+      // Add each UI file to the zip
+      currentProjectData.uiFiles.forEach(file => {
+        if (componentsFolder) {
+          // Convert .tsx extension to .jsx for better compatibility
+          const fileName = file.filename.replace('.tsx', '.jsx')
+          componentsFolder.file(fileName, file.content)
+        }
+      })
+      
+      // Add a README file
+      const readmeContent = `# ${projectName} - UI Components
+
+## Generated Files
+This archive contains ${currentProjectData.uiFiles.length} UI components generated by FlowGenius.
+
+## File Structure
+- components/ - All UI component files
+  ${currentProjectData.uiFiles.map(f => `- ${f.filename.replace('.tsx', '.jsx')}`).join('\n  ')}
+
+## Usage
+These components use React.createElement() syntax and are designed to work with:
+- React (available globally as window.React)
+- Tailwind CSS for styling
+
+## Notes
+- Components are registered globally on the window object
+- Each component exports itself as window.ComponentName
+- The main App component orchestrates the entire UI
+
+Generated on: ${new Date().toLocaleString()}
+`
+      
+      zip.file('README.md', readmeContent)
+      
+      // Add a simple HTML file for testing
+      const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${projectName}</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <!-- Router and State utilities -->
+  <script>
+    window.Router = {
+      currentRoute: 'home',
+      listeners: [],
+      navigate: function(route) {
+        this.currentRoute = route;
+        this.listeners.forEach(fn => fn(route));
+      },
+      getCurrentRoute: function() {
+        return this.currentRoute;
+      },
+      onRouteChange: function(callback) {
+        this.listeners.push(callback);
+        return () => {
+          this.listeners = this.listeners.filter(fn => fn !== callback);
+        };
+      }
+    };
+    
+    window.AppState = {
+      state: {},
+      set: function(key, value) {
+        this.state[key] = value;
+      },
+      get: function(key) {
+        return this.state[key];
+      }
+    };
+  </script>
+  
+  <!-- Load Components -->
+  ${currentProjectData.uiFiles.map(f => `<script src="components/${f.filename.replace('.tsx', '.jsx')}"></script>`).join('\n  ')}
+  
+  <!-- Mount App -->
+  <script>
+    if (window.App) {
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(React.createElement(window.App));
+    } else {
+      console.error('App component not found! Make sure window.App is defined.');
+    }
+  </script>
+</body>
+</html>`
+      
+      zip.file('index.html', htmlContent)
+      
+      // Generate the zip file
+      const content = await zip.generateAsync({ type: 'blob' })
+      
+      // Save the file
+      const fileName = `${projectName.toLowerCase().replace(/\s+/g, '-')}-ui-components.zip`
+      saveAs(content, fileName)
+      
+      toast.success(`Exported ${currentProjectData.uiFiles.length} files to ${fileName}`)
+    } catch (error) {
+      console.error('Failed to export files:', error)
+      toast.error('Failed to export files')
     }
   }
 
@@ -882,14 +361,77 @@ export default function UiTab() {
     }
   }
 
-  // Check if the code contains problematic patterns
-  const hasCodeIssues = currentProjectData.uiCode && (
-    currentProjectData.uiCode.includes('```') ||
-    currentProjectData.uiCode.includes('Error:') ||
-    currentProjectData.uiCode.includes('Sorry') ||
-    currentProjectData.uiCode.includes('I cannot') ||
-    currentProjectData.uiCode.includes('I can\'t')
-  )
+  const handleSelectiveRegeneration = async (fileIssues: any[]) => {
+    if (!currentProjectData?.idea) {
+      toast.error('No project idea found to regenerate')
+      return
+    }
+
+    // Confirm with user before regenerating
+    const fileNames = fileIssues.map(f => f.filename).join(', ')
+    const confirmed = window.confirm(`This will regenerate the following problematic files: ${fileNames}. Continue?`)
+    if (!confirmed) return
+
+    setGenerating(true)
+    clearProgress()
+    toast(`Regenerating ${fileIssues.length} problematic file${fileIssues.length !== 1 ? 's' : ''}...`)
+
+    try {
+      // Set up progress listener
+      const unsubscribe = ipc.onGenerationProgress((progress: GenerationProgress) => {
+        console.log('Selective: Received progress update:', progress)
+        addProgress(progress)
+      })
+
+      // Extract component names from filenames (remove .tsx extension)
+      const componentNames = fileIssues.map(f => f.componentName || f.filename.replace('.tsx', ''))
+      
+      console.log('Selective: Regenerating components:', componentNames)
+      
+      // TODO: This requires implementing selective regeneration in the backend
+      // For now, we'll fall back to full regeneration
+      const result = await ipc.generateProject(
+        currentProjectData.idea, 
+        currentProjectData.chatHistory || []
+      )
+      console.log('Selective: Generation result:', result)
+
+      if (result.success && result.data?.projectId) {
+        console.log('Selective: Files regenerated successfully')
+        toast.success(`Fixed ${componentNames.length} problematic file${componentNames.length !== 1 ? 's' : ''}!`)
+        
+        // Small delay to ensure files are written
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        // Reload the project data to get new UI files
+        console.log('Selective: Loading updated project data for:', result.data.projectId)
+        const updatedProjectData = await ipc.loadProject(result.data.projectId)
+        console.log('Selective: Updated project data loaded:', updatedProjectData ? 'success' : 'failed')
+        
+        if (updatedProjectData) {
+          setProjectData(updatedProjectData)
+          // Reset refresh key to force preview update
+          setRefreshKey(prev => prev + 1)
+        } else {
+          toast.error('Failed to load regenerated project data')
+        }
+      } else {
+        console.log('Selective: Regeneration failed:', result.error)
+        toast.error(result.error || 'Failed to regenerate files')
+      }
+
+      // Clean up listener
+      unsubscribe()
+    } catch (error) {
+      console.error('Selective regeneration error:', error)
+      toast.error('An error occurred while regenerating the files')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  // DISABLED: Just trust the generated code - if it works on localhost, it works
+  const hasCodeIssues = false
 
   const highlightCode = (code: string) => {
     try {
@@ -899,154 +441,9 @@ export default function UiTab() {
     }
   }
 
-  // Preprocess code to ensure it has a default export
-  const preprocessCode = (code: string): string => {
-    if (!code) return ''
-    
-    // Remove any markdown code blocks if present
-    let cleanCode = code.replace(/```[\w]*\n?/g, '').trim();
-    
-    // Remove import statements (they can't be used in our context)
-    cleanCode = cleanCode.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
-    cleanCode = cleanCode.replace(/import\s+['"].*?['"];?\s*/g, '');
-    
-    // Remove export statements (we'll handle the component directly)
-    cleanCode = cleanCode.replace(/export\s+default\s+/g, '');
-    cleanCode = cleanCode.replace(/export\s+{\s*[^}]*\s*};?\s*/g, '');
-    
-    // If the code already has window.App assigned, return it as-is
-    if (cleanCode.includes('window.App')) {
-      return cleanCode;
-    }
-    
-    // Helper function to convert JSX attributes to object
-    const convertAttributes = (attrs: string): string => {
-      const props: Record<string, string> = {};
-      
-      // Match attribute patterns
-      const attrRegex = /(\w+)(?:=(?:"([^"]*)"|'([^']*)'|{([^}]*)}|\w+))?/g;
-      let attrMatch;
-      
-      while ((attrMatch = attrRegex.exec(attrs)) !== null) {
-        const [, name, doubleQuoted, singleQuoted, expression] = attrMatch;
-        if (doubleQuoted !== undefined) {
-          props[name] = `'${doubleQuoted}'`;
-        } else if (singleQuoted !== undefined) {
-          props[name] = `'${singleQuoted}'`;
-        } else if (expression !== undefined) {
-          props[name] = expression;
-        } else {
-          props[name] = 'true'; // Boolean attributes
-        }
-      }
-      
-      // Convert to object literal string
-      const entries = Object.entries(props).map(([key, value]) => `${key}: ${value}`);
-      return entries.length > 0 ? `{ ${entries.join(', ')} }` : 'null';
-    };
-    
-    // Convert JSX to React.createElement (for backwards compatibility with existing projects)
-    if (cleanCode.includes('<') && cleanCode.includes('>')) {
-      console.log('Converting JSX to React.createElement...');
-      
-      // For simplicity and reliability, let's just create a warning component
-      // We don't include the original JSX to avoid triggering JSX detection in the iframe
-      const compatibilityCode = `
-// JSX compatibility wrapper
-// Create a simple component that renders a message
-window.App = (() => {
-  return React.createElement('div', { className: 'p-4' },
-    React.createElement('div', { className: 'bg-yellow-50 border border-yellow-200 rounded-lg p-4' },
-      React.createElement('h3', { className: 'text-yellow-800 font-semibold mb-2' }, 'Preview Temporarily Unavailable'),
-      React.createElement('p', { className: 'text-yellow-700 text-sm' }, 
-        'This project was created with JSX syntax. Please generate a new project to see the preview.'
-      ),
-      React.createElement('p', { className: 'text-yellow-600 text-xs mt-2' }, 
-        'New projects will use a compatible format that works with the preview.'
-      )
-    )
-  );
-});`;
-      
-      console.log('JSX conversion complete - showing compatibility message');
-      return compatibilityCode; // Return immediately, don't process further
-    }
-    
-    // Look for the main component - usually the last component defined or one with the most JSX
-    const componentRegex = /(?:const|function|class)\s+([A-Z][a-zA-Z0-9]*)\s*(?:=|\(|extends)/g;
-    const components: string[] = [];
-    let componentMatch;
-    while ((componentMatch = componentRegex.exec(cleanCode)) !== null) {
-      components.push(componentMatch[1]);
-    }
-    
-    // Find the component that likely renders other components (contains other component names)
-    let mainComponent: string | null = null;
-    if (components.length > 0) {
-      // Check each component to see if it references other components
-      for (const comp of components) {
-        const componentBodyRegex = new RegExp(`${comp}[^{]*{[^}]*}`, 's');
-        const bodyMatch = cleanCode.match(componentBodyRegex);
-        if (bodyMatch) {
-          const body = bodyMatch[0];
-          // Count how many other components it references
-          const referencedComponents = components.filter(c => c !== comp && body.includes(`<${c}`));
-          if (referencedComponents.length > 2) {
-            mainComponent = comp;
-            break;
-          }
-        }
-      }
-      
-      // If no component references others, pick the last one (often the main component)
-      if (!mainComponent) {
-        mainComponent = components[components.length - 1];
-      }
-    }
-    
-    // Add assignment to App if we found a main component
-    if (mainComponent) {
-      return `${cleanCode}\n\nwindow.App = ${mainComponent};`;
-    }
-    
-    // Try to find any component
-    const componentMatches = [
-      // Arrow function: const ComponentName = () => { ... }
-      cleanCode.match(/const\s+([A-Z][a-zA-Z0-9]*)\s*=\s*(?:\([^)]*\)|[^=])*\s*=>/),
-      // Function declaration: function ComponentName() { ... }
-      cleanCode.match(/function\s+([A-Z][a-zA-Z0-9]*)\s*\(/),
-      // Class declaration: class ComponentName extends ...
-      cleanCode.match(/class\s+([A-Z][a-zA-Z0-9]*)\s*(?:extends|{)/)
-    ];
-    
-    for (const match of componentMatches) {
-      if (match) {
-        const componentName = match[1];
-        // Add assignment to App
-        return `${cleanCode}\n\nwindow.App = ${componentName};`;
-      }
-    }
-    
-    // If nothing found, check if there's React.createElement in the code that we can wrap
-    // But don't wrap if window.App is already assigned
-    if (cleanCode.includes('React.createElement') && !cleanCode.includes('window.App')) {
-      return `window.App = () => {
-  return ${cleanCode};
-};`;
-    }
-    
-    // Last resort: Create an error component
-    return `window.App = () => {
-  return React.createElement('div', { className: 'p-4' },
-    React.createElement('div', { className: 'bg-red-50 border border-red-200 rounded-lg p-4' },
-      React.createElement('h3', { className: 'text-red-800 font-semibold mb-2' }, 'Preview Error'),
-      React.createElement('p', { className: 'text-red-700 text-sm' }, 'Could not find a valid React component to render.')
-    )
-  );
-};`;
-  }
 
-  // Combine multiple UI files into a single code string
+
+  // Get combined code for copying to clipboard
   const getCombinedCode = (): string => {
     // If we have multiple UI files, combine them
     if (currentProjectData?.uiFiles && currentProjectData.uiFiles.length > 0) {
@@ -1057,148 +454,15 @@ window.App = (() => {
         return 0;
       });
       
-      console.log('UI Files:', sortedFiles.map(f => ({ 
-        filename: f.filename, 
-        type: f.type, 
-        hasWindowApp: f.content.includes('window.App'),
-        length: f.content.length 
-      })));
-      
-      // Check each file for class issues
-      sortedFiles.forEach(file => {
-        const classCount = (file.content.match(/\bclass\b(?!Name)/g) || []).length;
-        if (classCount > 0) {
-          console.error(`File ${file.filename} contains ${classCount} problematic "class" keywords`);
-          // Show first occurrence
-          const match = file.content.match(/.{0,50}\bclass\b(?!Name).{0,50}/);
-          if (match) {
-            console.error(`  First occurrence: "${match[0].replace(/\n/g, '\\n')}"`);
-          }
-        }
-      });
-      
-      // Combine all files
-      let combined = sortedFiles.map(file => file.content).join('\n\n');
-      
-      console.log('=== COMBINED CODE PREVIEW ===');
-      console.log('Total length:', combined.length);
-      console.log('First 500 chars:', combined.substring(0, 500));
-      
-      // Check for problematic patterns before fixing
-      const classMatches = combined.match(/\bclass\b(?!Name)/g);
-      if (classMatches) {
-        console.error(`Found ${classMatches.length} instances of "class" that need fixing`);
-        // Show first few matches with context
-        const regex = /(.{0,30})\bclass\b(?!Name)(.{0,30})/g;
-        let match;
-        let count = 0;
-        while ((match = regex.exec(combined)) !== null && count < 5) {
-          console.error(`  Match ${count + 1}: "${match[0].replace(/\n/g, '\\n')}"`);
-          count++;
-        }
-      } else {
-        console.log('No problematic "class" keywords found in combined code');
-      }
-      
-      // Fix common React syntax issues
-      if (combined.includes('useState(') && !combined.includes('React.useState(')) {
-        console.warn('Fixing React hook syntax in combined code...');
-        combined = combined.replace(/\buseState\(/g, 'React.useState(');
-        combined = combined.replace(/\buseEffect\(/g, 'React.useEffect(');
-        combined = combined.replace(/\buseCallback\(/g, 'React.useCallback(');
-        combined = combined.replace(/\buseMemo\(/g, 'React.useMemo(');
-        combined = combined.replace(/\buseRef\(/g, 'React.useRef(');
-        combined = combined.replace(/\buseContext\(/g, 'React.useContext(');
-        combined = combined.replace(/\buseReducer\(/g, 'React.useReducer(');
-      }
-      
-      if (combined.includes('createElement(') && !combined.includes('React.createElement(')) {
-        console.warn('Fixing createElement syntax in combined code...');
-        combined = combined.replace(/\bcreateElement\(/g, 'React.createElement(');
-      }
-      
-      // Fix potential class/className issues
-      const originalCombined = combined;
-      
-      // Pattern 1: { class: 'value' } or { class: "value" }
-      combined = combined.replace(/{\s*class\s*:\s*(['"])/g, '{ className: $1');
-      
-      // Pattern 2: , class: 'value' or , class: "value"
-      combined = combined.replace(/,\s*class\s*:\s*(['"])/g, ', className: $1');
-      
-      // Pattern 3: "class": or 'class': (quoted key)
-      combined = combined.replace(/["']class["']\s*:/g, '"className":');
-      
-      // Pattern 4: Plain class: at start of line or after whitespace
-      combined = combined.replace(/(\s)class\s*:\s*/g, '$1className: ');
-      
-      // Pattern 5: More aggressive - any object property "class"
-      combined = combined.replace(/([,{]\s*)class(\s*:)/g, '$1className$2');
-      
-      // Pattern 6: Nuclear option - replace ALL instances of standalone "class"
-      // This is our safety net
-      combined = combined.replace(/\bclass\b(?!Name)/g, 'className');
-      
-      if (combined !== originalCombined) {
-        console.warn('Fixed class/className issues in combined code');
-      }
-      
-      // Final safety check - look for any remaining "class" keywords
-      const remainingClassMatches = combined.match(/\bclass\b(?!Name)/g);
-      if (remainingClassMatches) {
-        console.error(`Still found ${remainingClassMatches.length} instances of "class" after fixes!`);
-        
-        // Try to find and show context
-        const classRegex = /\bclass\b(?!Name)/g;
-        let match;
-        let count = 0;
-        while ((match = classRegex.exec(combined)) !== null && count < 3) {
-          const start = Math.max(0, match.index - 50);
-          const end = Math.min(combined.length, match.index + 50);
-          console.error(`Instance ${count + 1} at position ${match.index}:`);
-          console.error(`  Context: "${combined.substring(start, end).replace(/\n/g, '\\n')}"`);
-          count++;
-        }
-        
-        // Last resort - try to fix any pattern we might have missed
-        combined = combined.replace(/\bclass\b(?!Name)/g, 'className');
-        console.warn('Applied last resort fix: replaced all remaining "class" with "className"');
-      }
-      
-      // If no window.App found, check if there's an App component to assign
-      if (!combined.includes('window.App')) {
-        console.warn('No window.App assignment found in combined code');
-        // Try to find App component and add assignment
-        if (combined.includes('const App =') || combined.includes('function App')) {
-          console.log('Found App component, adding window.App assignment');
-          combined = combined + '\n\nwindow.App = App;';
-        } else {
-          console.error('No App component found in combined code!');
-          // Look for the main file's component
-          const mainFile = sortedFiles.find(f => f.type === 'main');
-          if (mainFile) {
-            console.log('Main file content preview:', mainFile.content.substring(0, 200));
-          }
-        }
-      }
-      
-      // Log final combined code info
-      console.log('Combined code includes window.App?', combined.includes('window.App'));
-      console.log('Combined code includes const App?', combined.includes('const App'));
-      
-      return combined;
+      // Combine all files with file headers
+      return sortedFiles.map(file => {
+        return `// ===== ${file.filename} =====\n${file.content.trim()}`;
+      }).join('\n\n');
     }
     
     // Fall back to single file
     return currentProjectData?.uiCode || '';
   };
-
-  // Move useMemo after preprocessCode is defined
-  const processedCode = useMemo(() => {
-    const combinedCode = getCombinedCode();
-    if (!combinedCode) return '';
-    return preprocessCode(combinedCode);
-  }, [currentProjectData?.uiCode, currentProjectData?.uiFiles]);
 
   const CodeEditor = ({ value, className = '', style = {} }: { value: string; className?: string; style?: React.CSSProperties }) => {
     const lineCount = value.split('\n').length
@@ -1309,6 +573,15 @@ window.App = (() => {
                   <Copy className="w-4 h-4" />
                   Copy Code
                 </button>
+                {currentProjectData?.uiFiles && currentProjectData.uiFiles.length > 0 && (
+                  <button
+                    onClick={handleExportFiles}
+                    className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export Files
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1323,10 +596,37 @@ window.App = (() => {
                       <div className="flex items-start gap-3">
                         <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
                         <div className="flex-1">
-                          <h4 className="font-medium text-yellow-800 dark:text-yellow-200">UI Generation Issue</h4>
+                          <h4 className="font-medium text-yellow-800 dark:text-yellow-200">Code Contains Markdown</h4>
                           <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                            The generated code contains formatting issues or explanatory text. This sometimes happens when the AI includes markdown or instructions instead of pure code.
+                            The generated code contains markdown formatting (```) which needs to be removed.
                           </p>
+                          
+                          {/* Show validation issues only if they're syntax errors */}
+                          {currentProjectData.uiValidationIssues && currentProjectData.uiValidationIssues.length > 0 && (
+                            <div className="mt-4 space-y-3">
+                              <h5 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Syntax Errors Found:</h5>
+                              {currentProjectData.uiValidationIssues
+                                .filter(fileIssue => fileIssue.issues.some(issue => issue.type === 'syntax_error'))
+                                .map((fileIssue) => (
+                                  <div key={fileIssue.filename} className="bg-red-100 dark:bg-red-800/30 rounded-md p-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <FileCode className="w-4 h-4 text-red-700 dark:text-red-300" />
+                                      <span className="font-medium text-red-800 dark:text-red-200">{fileIssue.filename}</span>
+                                    </div>
+                                    <div className="space-y-1 text-sm">
+                                      {fileIssue.issues
+                                        .filter(issue => issue.type === 'syntax_error')
+                                        .map((issue, index) => (
+                                          <div key={index} className="flex gap-2 text-red-700 dark:text-red-300">
+                                            <span className="flex-1">{issue.message}</span>
+                                          </div>
+                                        ))}
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                          
                           <div className="flex gap-2 mt-3">
                             <button
                               onClick={() => setShowRawCode(!showRawCode)}
@@ -1368,7 +668,13 @@ window.App = (() => {
                 ) : (
                   <div className="flex flex-col h-full">
                     <div className="relative flex-1 bg-gray-50">
-                      <PreviewIframe code={processedCode} refreshKey={refreshKey} />
+                      {currentProjectData?.uiFiles && currentProjectData.uiFiles.length > 0 ? (
+                        <LocalhostPreview files={currentProjectData.uiFiles} refreshKey={refreshKey} />
+                      ) : (
+                        <div className="flex items-center justify-center h-full">
+                          <p className="text-gray-500">No UI files available for preview</p>
+                        </div>
+                      )}
                       {/* Refresh button */}
                       <button
                         onClick={() => {

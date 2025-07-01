@@ -160,6 +160,7 @@ import { IPC_CHANNELS } from '../lib/ipc-channels'
 import { storage } from '../lib/storage'
 import { runWorkflow } from '../lib/workflow'
 import { startProjectChat, sendChatMessage } from '../lib/chat'
+import { startPreviewServer, stopPreviewServer } from '../lib/preview-server'
 
 // Storage handlers
 ipcMain.handle(IPC_CHANNELS.ENSURE_STORAGE, async () => {
@@ -242,4 +243,38 @@ ipcMain.handle(IPC_CHANNELS.CHAT_MESSAGE, async (event, data: { content: string,
     console.error('Failed to send chat message:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Failed to send message' }
   }
+})
+
+// Preview server handlers
+let previewUrl: string | null = null
+
+ipcMain.handle(IPC_CHANNELS.PREVIEW_START, async (_, files: any[]) => {
+  try {
+    const result = await startPreviewServer(files)
+    previewUrl = result.url
+    return { success: true, url: result.url, port: result.port }
+  } catch (error) {
+    console.error('Failed to start preview server:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to start preview server' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.PREVIEW_STOP, async () => {
+  try {
+    await stopPreviewServer()
+    previewUrl = null
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to stop preview server:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to stop preview server' }
+  }
+})
+
+ipcMain.handle(IPC_CHANNELS.PREVIEW_GET_URL, async () => {
+  return { url: previewUrl }
+})
+
+// Stop preview server when app quits
+app.on('before-quit', async () => {
+  await stopPreviewServer()
 })

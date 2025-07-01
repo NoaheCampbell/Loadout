@@ -57,7 +57,7 @@ export interface V0Prompt {
 export interface UIFile {
   filename: string;
   content: string;
-  type: 'component' | 'style' | 'utils' | 'main';
+  type: 'component' | 'style' | 'utils' | 'main' | 'page';
 }
 
 export interface ChatMessage {
@@ -65,6 +65,19 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+}
+
+export interface UIValidationIssue {
+  type: string;
+  message: string;
+  line?: number;
+  context?: string;
+}
+
+export interface FileValidationIssues {
+  filename: string;
+  componentName: string;
+  issues: UIValidationIssue[];
 }
 
 export interface ProjectFiles {
@@ -77,5 +90,6 @@ export interface ProjectFiles {
   v0Prompt?: V0Prompt;
   uiCode?: string;  // Legacy: single file
   uiFiles?: UIFile[];  // New: multiple files
+  uiValidationIssues?: FileValidationIssues[];  // Validation issues for problematic files
   chatHistory?: ChatMessage[];
 } 

@@ -38,6 +38,24 @@ export const ipc = {
     return window.ipcRenderer.invoke(channel, data);
   },
 
+  // Preview server operations
+  async startPreviewServer(files: any[]): Promise<{ 
+    success: boolean; 
+    url?: string; 
+    port?: number; 
+    error?: string 
+  }> {
+    return window.ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_START, files);
+  },
+
+  async stopPreviewServer(): Promise<{ success: boolean; error?: string }> {
+    return window.ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_STOP);
+  },
+
+  async getPreviewUrl(): Promise<{ url: string | null }> {
+    return window.ipcRenderer.invoke(IPC_CHANNELS.PREVIEW_GET_URL);
+  },
+
   // Event listeners
   onGenerationProgress(callback: (progress: GenerationProgress) => void) {
     window.ipcRenderer.on(IPC_CHANNELS.GENERATION_PROGRESS, (_, progress) => {
