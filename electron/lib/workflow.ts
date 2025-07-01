@@ -360,30 +360,68 @@ async function processIdea(idea: string): Promise<ProjectIdea> {
 // Generate PRD from project idea
 async function generatePRD(projectIdea: ProjectIdea): Promise<PRD> {
   const prompt = `
-Based on this project idea, create a detailed Product Requirements Document (PRD):
+Based on this project idea, create a detailed Product Requirements Document (PRD) that follows this EXACT format:
 
 Title: ${projectIdea.title}
 Description: ${projectIdea.description}
 
-Generate a PRD with the following sections:
-1. Problem Statement (1-2 paragraphs)
-2. Goals (3-5 bullet points)
-3. Scope (1 paragraph describing what's included)
-4. Constraints (3-5 technical or business constraints)
-5. Success Criteria (3-5 measurable outcomes)
+You must generate a comprehensive PRD with these sections:
 
-Format your response as JSON with this structure:
+# Project Name
+(The actual project name)
+
+## Project Description
+[A detailed 2-3 paragraph description of what the project is, its purpose, and value proposition]
+
+## Target Audience
+[Describe the primary and secondary users in detail - who they are, their needs, pain points, and how this solution helps them]
+
+## Desired Features
+Create 3-5 feature categories, each with 3-5 specific requirements and sub-requirements. Use checkbox format:
+
+### [Feature Category 1]
+- [ ] [Specific requirement 1]
+    - [ ] [Sub-requirement 1a]
+    - [ ] [Sub-requirement 1b]
+- [ ] [Specific requirement 2]
+    - [ ] [Sub-requirement 2a]
+    - [ ] [Sub-requirement 2b]
+
+### [Feature Category 2]
+- [ ] [Specific requirement]
+    - [ ] [Sub-requirement]
+
+(Continue for all feature categories)
+
+## Design Requests
+List specific design and UX requirements with details:
+- [ ] [Design requirement 1]
+    - [ ] [Specific design detail]
+    - [ ] [Another design detail]
+- [ ] [Design requirement 2]
+    - [ ] [Design detail]
+
+## Other Notes
+- [Technical considerations]
+- [Future enhancements]
+- [Integration requirements]
+- [Performance requirements]
+
+BE EXTREMELY DETAILED AND SPECIFIC. Each feature should be actionable and measurable. Sub-requirements should break down the main requirement into implementable pieces.
+
+Format your response as JSON with this structure to maintain the content while allowing proper parsing:
 {
-  "problem": "...",
-  "goals": ["goal1", "goal2", ...],
-  "scope": "...",
-  "constraints": ["constraint1", "constraint2", ...],
-  "success_criteria": ["criteria1", "criteria2", ...]
+  "problem": "[The full markdown content from Project Description section]",
+  "goals": ["[Feature Category 1 with all its requirements]", "[Feature Category 2 with all its requirements]", ...],
+  "scope": "[Combined Target Audience and scope information]",
+  "constraints": ["[Each design request as a separate item]", "[Technical constraints from Other Notes]", ...],
+  "success_criteria": ["[Measurable outcomes derived from the features]", ...]
 }
-`
+
+IMPORTANT: Make the content as detailed and specific as possible. Don't use generic descriptions. Be specific to the "${projectIdea.title}" project.`
 
   const response = await llm.invoke([
-    new SystemMessage('You are a product manager creating a PRD. Return only valid JSON.'),
+    new SystemMessage('You are an expert product manager creating a comprehensive PRD. Return valid JSON that preserves the detailed markdown formatting in the values. Be extremely specific and detailed in your requirements.'),
     new HumanMessage(prompt),
   ])
 
@@ -436,27 +474,78 @@ Format as JSON:
 // Generate checklist from PRD
 async function generateChecklist(prd: PRD): Promise<ChecklistItem[]> {
   const prompt = `
-Based on this PRD, create a development checklist:
+Based on this PRD, create a comprehensive development checklist organized by phases:
 
 Problem: ${prd.problem}
-Goals: ${prd.goals.join(', ')}
+Goals: ${prd.goals.join('\n')}
 Scope: ${prd.scope}
+Constraints: ${prd.constraints.join('\n')}
 
-Generate 8-12 specific, actionable development tasks. Focus on:
-- Setup and infrastructure
-- Core features from the goals
-- Testing and validation
-- Documentation
+Create a detailed checklist following this EXACT phase-based structure:
 
-Format as JSON array:
+## Phases Overview
+- [ ] Phase 1: Foundation & Core Infrastructure
+- [ ] Phase 2: Data Management & Storage
+- [ ] Phase 3: User Interface & Experience
+- [ ] Phase 4: Business Logic & Processing
+- [ ] Phase 5: Integration & External Services
+- [ ] Phase 6: Analytics & Monitoring
+- [ ] Phase 7: Optimization & Enhancement
+
+For EACH phase, create 3-5 features, and for EACH feature create 3-5 sub-features.
+
+## Phase 1: Foundation & Core Infrastructure
+**Criteria:** Essential systems that the application cannot function without.
+
+[ ] Feature 1: [Specific feature name related to foundation]
+    - [ ] Sub-feature 1.1: [Specific implementation] (independent - no dependencies)
+    - [ ] Sub-feature 1.2: [Specific implementation] (independent - no dependencies)
+    - [ ] Sub-feature 1.3: [Specific implementation] (independent - no dependencies)
+
+[ ] Feature 2: [Another foundation feature]
+    - [ ] Sub-feature 2.1: [Specific task] (independent - no dependencies)
+    - [ ] Sub-feature 2.2: [Specific task] (independent - no dependencies)
+
+(Continue for all features in Phase 1)
+
+## Phase 2: Data Management & Storage
+**Criteria:** Systems for storing, retrieving, and managing application data.
+
+[ ] Feature 1: [Data-related feature specific to this project]
+    - [ ] Sub-feature 1.1: [Specific implementation] (independent - no dependencies)
+    - [ ] Sub-feature 1.2: [Specific implementation] (independent - no dependencies)
+
+(Continue this pattern for ALL 7 phases)
+
+IMPORTANT REQUIREMENTS:
+1. Make features SPECIFIC to the project "${prd.problem}"
+2. Each sub-feature must be independently implementable (no dependencies between items)
+3. Use the exact checkbox format: [ ] for unchecked, - [ ] for sub-items
+4. Include "(independent - no dependencies)" note for each sub-feature
+5. Be extremely detailed and specific - avoid generic terms
+6. Each phase should have 3-5 features
+7. Each feature should have 3-5 sub-features
+8. Total items should be comprehensive (aim for 100+ total checkboxes across all phases)
+
+Format as JSON array where each item represents a line of text with proper indentation:
 [
-  { "text": "Set up project repository and initial structure", "done": false },
-  { "text": "...", "done": false }
+  { "text": "## Phases Overview", "done": false },
+  { "text": "- [ ] Phase 1: Foundation & Core Infrastructure", "done": false },
+  { "text": "- [ ] Phase 2: Data Management & Storage", "done": false },
+  { "text": "", "done": false },
+  { "text": "## Phase 1: Foundation & Core Infrastructure", "done": false },
+  { "text": "**Criteria:** Essential systems that the application cannot function without.", "done": false },
+  { "text": "", "done": false },
+  { "text": "[ ] Feature 1: Authentication System", "done": false },
+  { "text": "    - [ ] Sub-feature 1.1: User registration (independent - no dependencies)", "done": false },
+  { "text": "    - [ ] Sub-feature 1.2: User login (independent - no dependencies)", "done": false },
+  ...
 ]
-`
+
+Generate a COMPLETE and DETAILED checklist for all 7 phases.`
 
   const response = await llm.invoke([
-    new SystemMessage('You are a technical lead creating a development checklist. Return only valid JSON array.'),
+    new SystemMessage('You are an expert technical architect creating a comprehensive phase-based development checklist. Return only valid JSON array. Be extremely detailed and specific to the project. Include ALL 7 phases with multiple features and sub-features for each.'),
     new HumanMessage(prompt),
   ])
 
@@ -1191,7 +1280,7 @@ async function generatePageComponent(
   const componentName = sanitizedRoute.charAt(0).toUpperCase() + sanitizedRoute.slice(1) + 'Page'
   
   console.log(`Generating page component: ${componentName} for route: ${sanitizedRoute}`)
-  
+
   const prompt = `Create a React page component for the "${sanitizedRoute}" route in the "${projectContext.title}" application.
 
 This is a full page component that will be shown when the user navigates to the "${sanitizedRoute}" route.
@@ -1369,7 +1458,7 @@ async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgr
           existingComponents: files.map(f => f.filename.replace('.tsx', ''))
         })
       
-        files.push({
+      files.push({
           filename: pageComponent.name + '.tsx',
           content: pageComponent.content,
           type: 'page'
