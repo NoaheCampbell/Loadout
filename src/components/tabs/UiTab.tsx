@@ -419,6 +419,9 @@ Generated on: ${new Date().toLocaleString()}
         console.log('Retry: Project regenerated successfully')
         toast.success('UI regenerated successfully!')
         
+        // Play completion sound
+        ipc.playCompletionSound()
+        
         // Small delay to ensure files are written
         await new Promise(resolve => setTimeout(resolve, 100))
         
@@ -487,6 +490,9 @@ Generated on: ${new Date().toLocaleString()}
       if (result.success && result.data?.projectId) {
         console.log('Selective: Files regenerated successfully')
         toast.success(`Fixed ${componentNames.length} problematic file${componentNames.length !== 1 ? 's' : ''}!`)
+        
+        // Play completion sound
+        ipc.playCompletionSound()
         
         // Small delay to ensure files are written
         await new Promise(resolve => setTimeout(resolve, 100))

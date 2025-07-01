@@ -1,6 +1,73 @@
 import { IPC_CHANNELS } from '../../electron/lib/ipc-channels';
 import { Project, ProjectFiles, GenerationProgress, ChatMessage } from '../types';
 
+// Sound notification utility
+const playCompletionSound = () => {
+  try {
+    // Create a pleasant completion sound using Web Audio API
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    // Create a chord progression for a pleasant "ding" sound
+    const playTone = (frequency: number, duration: number, delay: number = 0) => {
+      setTimeout(() => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+        oscillator.type = 'sine';
+        
+        // Create a pleasant envelope
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + duration);
+      }, delay);
+    };
+    
+    // Play a pleasant completion chord (C major triad)
+    playTone(523.25, 0.3, 0);    // C5
+    playTone(659.25, 0.4, 100);  // E5
+    playTone(783.99, 0.5, 200);  // G5
+    
+  } catch (error) {
+    // Fallback to system beep if Web Audio API fails
+    console.log('Web Audio API not available, using system beep');
+    // Try to trigger system notification sound
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('Generation Complete!', {
+        body: 'Your React app has been generated successfully!',
+        silent: false
+      });
+    } else if ('Notification' in window && Notification.permission !== 'denied') {
+      // Request permission and then show notification
+      Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          new Notification('Generation Complete!', {
+            body: 'Your React app has been generated successfully!',
+            silent: false
+          });
+        }
+      });
+    }
+  }
+};
+
+// Request notification permissions on app initialization
+const requestNotificationPermission = async () => {
+  if ('Notification' in window && Notification.permission === 'default') {
+    try {
+      await Notification.requestPermission();
+    } catch (error) {
+      console.log('Notification permission request failed:', error);
+    }
+  }
+};
+
 // Type-safe IPC communication layer
 export const ipc = {
   // Storage operations
@@ -78,4 +145,8 @@ export const ipc = {
       window.ipcRenderer.removeAllListeners(channel);
     };
   },
+
+  // Sound notifications
+  playCompletionSound,
+  requestNotificationPermission
 }; 

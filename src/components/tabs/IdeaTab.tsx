@@ -224,6 +224,9 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
         console.log('Frontend: Project generated successfully')
         toast.success('Project generated successfully!')
         
+        // Play completion sound
+        ipc.playCompletionSound()
+        
         // Update projects list if provided
         if (result.data.projects) {
           console.log('Frontend: Updating projects list:', result.data.projects.length, 'projects')

@@ -27,6 +27,24 @@ export interface UIPlan {
   components: string[];
   layout: string;
   user_interactions: string[];
+  design_system?: {
+    primary_color: string;
+    accent_color: string;
+    background_color: string;
+    text_hierarchy: string[];
+    spacing_scale: string[];
+    component_patterns: string[];
+  };
+  component_specs?: Array<{
+    name: string;
+    responsibility: string;
+    contains: string[];
+  }>;
+  layout_details?: {
+    structure: string;
+    content_areas: string[];
+    interactions: string[];
+  };
 }
 
 export interface Project {

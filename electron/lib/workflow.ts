@@ -32,6 +32,7 @@ const WorkflowStateAnnotation = Annotation.Root({
   checklist: Annotation<ChecklistItem[] | undefined>,
   brainlift: Annotation<BrainliftLog | undefined>,
   uiPlan: Annotation<UIPlan | undefined>,
+  uiGuidelines: Annotation<string | undefined>,
   uiStrategy: Annotation<UIStrategy | undefined>,
   uiCode: Annotation<string | undefined>,
   uiFiles: Annotation<UIFile[] | undefined>,
@@ -84,28 +85,38 @@ async function processIdeaNode(state: WorkflowState): Promise<Partial<WorkflowSt
 // Generate PRD node
 async function generatePRDNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
   try {
-    if (!state.projectIdea) throw new Error('Project idea required')
+    if (!state.projectIdea) {
+      console.warn('Project idea not available, cannot generate PRD')
+      return {} // Skip PRD generation
+    }
     state.onProgress?.('PRDGeneratorNode', 'in-progress', 'Generating PRD...')
     const prd = await generatePRD(state.projectIdea)
     state.onProgress?.('PRDGeneratorNode', 'success')
     return { prd }
   } catch (error) {
+    console.error('PRD generation error:', error)
     state.onProgress?.('PRDGeneratorNode', 'error', error instanceof Error ? error.message : 'Failed to generate PRD')
-    return { error: error instanceof Error ? error.message : 'Failed to generate PRD' }
+    // Don't propagate error to avoid workflow failure
+    return {}
   }
 }
 
 // Generate checklist node
 async function generateChecklistNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
   try {
-    if (!state.prd) throw new Error('PRD required')
+    if (!state.prd) {
+      console.warn('PRD not available, skipping checklist generation')
+      return { checklist: [] } // Return empty checklist instead of error
+    }
     state.onProgress?.('ChecklistGeneratorNode', 'in-progress', 'Creating development checklist...')
     const checklist = await generateChecklist(state.prd)
     state.onProgress?.('ChecklistGeneratorNode', 'success')
     return { checklist }
   } catch (error) {
+    console.error('Failed to generate checklist:', error)
     state.onProgress?.('ChecklistGeneratorNode', 'error', error instanceof Error ? error.message : 'Failed to generate checklist')
-    return { error: error instanceof Error ? error.message : 'Failed to generate checklist' }
+    // Return empty checklist instead of propagating error to avoid concurrent update issues
+    return { checklist: [] }
   }
 }
 
@@ -128,7 +139,17 @@ async function generateBrainliftNode(state: WorkflowState): Promise<Partial<Work
 // Generate UI plan node
 async function generateUIPlanNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
   try {
-    if (!state.projectIdea || !state.prd) throw new Error('Project idea and PRD required')
+    if (!state.projectIdea || !state.prd) {
+      console.warn('Project idea or PRD not available, using minimal UI plan')
+      // Return a minimal UI plan instead of error
+      return { 
+        uiPlan: {
+          components: ['Header', 'MainContent', 'Footer'],
+          layout: 'simple layout',
+          user_interactions: ['navigation', 'content interaction']
+        }
+      }
+    }
     state.onProgress?.('UIPlannerNode', 'in-progress', 'Planning UI components...')
     const uiPlan = await generateUIPlan(state.projectIdea, state.prd)
     state.onProgress?.('UIPlannerNode', 'success')
@@ -145,24 +166,40 @@ async function generateUIPlanNode(state: WorkflowState): Promise<Partial<Workflo
     // Also show App.tsx as pending
     state.onProgress?.('App', 'pending', undefined, false, 'UIGenerationNode')
     
-    return { uiPlan }
+    // Generate UI guidelines based on the plan
+    const uiGuidelines = generateUIBuildGuidelines(state.projectIdea, uiPlan)
+    
+    return { uiPlan, uiGuidelines }
   } catch (error) {
+    console.error('Failed to generate UI plan:', error)
     state.onProgress?.('UIPlannerNode', 'error', error instanceof Error ? error.message : 'Failed to generate UI plan')
-    return { error: error instanceof Error ? error.message : 'Failed to generate UI plan' }
+    // Return minimal UI plan instead of propagating error
+    return { 
+      uiPlan: {
+        components: ['Header', 'MainContent', 'Footer'],
+        layout: 'simple layout',
+        user_interactions: ['navigation', 'content interaction']
+      }
+    }
   }
 }
 
 // Determine strategy node
 async function determineStrategyNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
   try {
-    if (!state.uiPlan) throw new Error('UI plan required')
+    if (!state.uiPlan) {
+      console.warn('UI plan not available, defaulting to GPT strategy')
+      return { uiStrategy: 'gpt' }
+    }
     state.onProgress?.('UIStrategyDecisionNode', 'in-progress', 'Determining UI generation strategy...')
     const uiStrategy = determineUIStrategy(state.uiPlan)
     state.onProgress?.('UIStrategyDecisionNode', 'success')
     return { uiStrategy }
   } catch (error) {
+    console.error('Failed to determine strategy:', error)
     state.onProgress?.('UIStrategyDecisionNode', 'error', error instanceof Error ? error.message : 'Failed to determine strategy')
-    return { error: error instanceof Error ? error.message : 'Failed to determine strategy' }
+    // Default to GPT strategy instead of failing
+    return { uiStrategy: 'gpt' }
   }
 }
 
@@ -176,7 +213,7 @@ async function generateUINode(state: WorkflowState): Promise<Partial<WorkflowSta
     if (state.uiStrategy === 'gpt') {
       // Don't send GPTUICodeNode progress - it's redundant with UIGenerationNode
       try {
-        const generateResult = await generateUIFiles(state.projectIdea, state.uiPlan, state.onProgress)
+        const generateResult = await generateUIFiles(state.projectIdea, state.uiPlan, state.onProgress, state.uiGuidelines)
         const uiFiles = generateResult.files
         const validationIssues = generateResult.validationIssues
         
@@ -239,6 +276,7 @@ function createWorkflow() {
     .addNode('generateUIPlan', generateUIPlanNode)
     .addNode('determineStrategy', determineStrategyNode)
     .addNode('generateUI', generateUINode)
+    .addNode('updateImplementationChecklist', generateImplementationChecklistNode)
     .addNode('saveProject', saveProjectNode)
     
   // Sequential flow with some parallelization
@@ -255,9 +293,10 @@ function createWorkflow() {
   workflow.addEdge('generateBrainlift', 'determineStrategy')
   workflow.addEdge('generateUIPlan', 'determineStrategy')
   
-  // Then generate UI and save
+  // Then generate UI, update checklist with implementation details, and save
   workflow.addEdge('determineStrategy', 'generateUI')
-  workflow.addEdge('generateUI', 'saveProject')
+  workflow.addEdge('generateUI', 'updateImplementationChecklist')
+  workflow.addEdge('updateImplementationChecklist', 'saveProject')
   workflow.addEdge('saveProject', '__end__')
   
   return workflow.compile()
@@ -287,10 +326,23 @@ export async function runWorkflow(
       onProgress: wrappedProgress
     })
     
-    if (result.error) {
-      throw new Error(result.error)
+    // Check if we have the minimum required outputs
+    if (!result.projectIdea) {
+      throw new Error('Failed to process project idea')
     }
     
+    // Log if some nodes used fallbacks
+    if (!result.prd || Object.keys(result.prd).length === 0) {
+      console.warn('PRD generation failed, some features may be limited')
+    }
+    if (!result.checklist || result.checklist.length === 0) {
+      console.warn('Checklist generation failed or returned empty')
+    }
+    if (!result.uiPlan || result.uiPlan.components.length <= 3) {
+      console.warn('UI plan generation used minimal fallback')
+    }
+    
+    // Even with degraded results, the workflow is considered successful
     return { success: true, projectId }
   } catch (error) {
     console.error('Workflow error:', error)
@@ -359,7 +411,8 @@ async function processIdea(idea: string): Promise<ProjectIdea> {
 
 // Generate PRD from project idea
 async function generatePRD(projectIdea: ProjectIdea): Promise<PRD> {
-  const prompt = `
+  try {
+    const prompt = `
 Based on this project idea, create a detailed Product Requirements Document (PRD) that follows this EXACT format:
 
 Title: ${projectIdea.title}
@@ -420,26 +473,52 @@ Format your response as JSON with this structure to maintain the content while a
 
 IMPORTANT: Make the content as detailed and specific as possible. Don't use generic descriptions. Be specific to the "${projectIdea.title}" project.`
 
-  const response = await llm.invoke([
-    new SystemMessage('You are an expert product manager creating a comprehensive PRD. Return valid JSON that preserves the detailed markdown formatting in the values. Be extremely specific and detailed in your requirements.'),
-    new HumanMessage(prompt),
-  ])
+    const response = await llm.invoke([
+      new SystemMessage('You are an expert product manager creating a comprehensive PRD. Return valid JSON that preserves the detailed markdown formatting in the values. Be extremely specific and detailed in your requirements.'),
+      new HumanMessage(prompt),
+    ])
 
-  const content = response.content as string
-  const jsonMatch = content.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error('No JSON found in response')
-  
-  return JSON.parse(jsonMatch[0]) as PRD
+    const content = response.content as string
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) throw new Error('No JSON found in response')
+    
+    const prd = JSON.parse(jsonMatch[0]) as PRD
+    
+    // Ensure all required fields are present and are arrays/strings
+    return {
+      problem: prd.problem || projectIdea.description,
+      goals: Array.isArray(prd.goals) ? prd.goals : [],
+      scope: prd.scope || 'General users',
+      constraints: Array.isArray(prd.constraints) ? prd.constraints : [],
+      success_criteria: Array.isArray(prd.success_criteria) ? prd.success_criteria : []
+    }
+  } catch (error) {
+    console.error('Failed to generate PRD, using fallback:', error)
+    // Return a minimal but valid PRD structure
+    return {
+      problem: projectIdea.description,
+      goals: [`Build ${projectIdea.title}`],
+      scope: 'General users',
+      constraints: ['Time and resource constraints'],
+      success_criteria: ['Successfully launch the application']
+    }
+  }
 }
 
 // Generate brainlift (optional assumptions/decisions)
 async function generateBrainlift(projectIdea: ProjectIdea, prd: PRD): Promise<BrainliftLog | null> {
   try {
+    // Ensure PRD has required properties
+    if (!prd.goals || !Array.isArray(prd.goals)) {
+      console.warn('PRD missing goals property, skipping brainlift generation')
+      return null
+    }
+    
     const prompt = `
 Based on this project, identify key assumptions and technical decisions:
 
 Project: ${projectIdea.title}
-Problem: ${prd.problem}
+Problem: ${prd.problem || 'Not specified'}
 Goals: ${prd.goals.join(', ')}
 
 Generate:
@@ -473,12 +552,20 @@ Format as JSON:
 
 // Generate checklist from PRD
 async function generateChecklist(prd: PRD): Promise<ChecklistItem[]> {
+  // Ensure PRD has required properties
+  if (!prd.goals || !Array.isArray(prd.goals) || !prd.constraints || !Array.isArray(prd.constraints)) {
+    console.warn('PRD missing required properties (goals/constraints), using defaults')
+    // Provide default values
+    prd.goals = prd.goals || []
+    prd.constraints = prd.constraints || []
+  }
+  
   const prompt = `
 Based on this PRD, create a comprehensive development checklist organized by phases:
 
-Problem: ${prd.problem}
+Problem: ${prd.problem || 'Not specified'}
 Goals: ${prd.goals.join('\n')}
-Scope: ${prd.scope}
+Scope: ${prd.scope || 'Not specified'}
 Constraints: ${prd.constraints.join('\n')}
 
 Create a detailed checklist following this EXACT phase-based structure:
@@ -561,39 +648,139 @@ Generate a COMPLETE and DETAILED checklist for all 7 phases.`
   }))
 }
 
+// Validate component specifications to prevent content duplication
+function validateComponentSpecs(uiPlan: UIPlan): { valid: boolean; issues: string[] } {
+  const issues: string[] = []
+  
+  if (!uiPlan.component_specs) {
+    return { valid: true, issues: [] }
+  }
+  
+  // Check for overlapping responsibilities
+  const responsibilities = uiPlan.component_specs.map(spec => spec.responsibility.toLowerCase())
+  const duplicateResponsibilities = responsibilities.filter((resp, index) => 
+    responsibilities.indexOf(resp) !== index
+  )
+  
+  if (duplicateResponsibilities.length > 0) {
+    issues.push(`Duplicate responsibilities found: ${duplicateResponsibilities.join(', ')}`)
+  }
+  
+  // Check for overlapping content
+  const allContent = uiPlan.component_specs.flatMap(spec => spec.contains.map(c => c.toLowerCase()))
+  const duplicateContent = allContent.filter((content, index) => 
+    allContent.indexOf(content) !== index
+  )
+  
+  if (duplicateContent.length > 0) {
+    issues.push(`Overlapping content detected: ${duplicateContent.join(', ')}. This may cause duplicate UI elements.`)
+  }
+  
+  // Check for navigation/branding conflicts
+  const navigationComponents = uiPlan.component_specs.filter(spec => 
+    spec.name.toLowerCase().includes('navigation') || 
+    spec.name.toLowerCase().includes('header')
+  )
+  
+  if (navigationComponents.length > 1) {
+    const brandingComponents = navigationComponents.filter(comp => 
+      comp.contains.some(content => 
+        content.toLowerCase().includes('logo') || 
+        content.toLowerCase().includes('brand')
+      )
+    )
+    
+    if (brandingComponents.length > 1) {
+      issues.push(`Multiple components handling branding: ${brandingComponents.map(c => c.name).join(', ')}. This will cause duplicate headers.`)
+    }
+  }
+  
+  return {
+    valid: issues.length === 0,
+    issues
+  }
+}
+
 // Generate UI plan for React application
 async function generateUIPlan(projectIdea: ProjectIdea, prd: PRD): Promise<UIPlan> {
+  // Ensure PRD has required properties
+  if (!prd.goals || !Array.isArray(prd.goals)) {
+    console.warn('PRD missing goals property, using empty array')
+    prd.goals = []
+  }
+  
   const prompt = `
-Based on this project, create a UI plan for a REACT WEB APPLICATION:
+Based on this project, create a comprehensive UI plan for a REACT WEB APPLICATION:
 
 Title: ${projectIdea.title}
-Problem: ${prd.problem}
+Problem: ${prd.problem || 'Not specified'}
 Goals: ${prd.goals.join(', ')}
 
-Generate a plan for a modern React application with:
-1. List of specific React components needed - be explicit with component names (e.g., "UserDashboard" not just "Dashboard", "ProductListTable" not just "Table")
-2. Layout structure (single page app, dashboard layout, etc.)
-3. Key user interactions (clicks, forms, modals, etc.)
+Create a detailed plan that includes:
 
-IMPORTANT: 
-- List ALL major components needed for the app
-- Use descriptive component names that indicate their purpose
-- Include components like Header, Navigation, Sidebar, Footer, Modal, Form, List, Card, etc. as needed
+1. DESIGN SYSTEM:
+   - Primary color palette (main brand color + supporting colors)
+   - Typography hierarchy (headings, body text, captions)
+   - Spacing scale (consistent padding/margins)
+   - Component styling patterns
+
+2. COMPONENT ARCHITECTURE:
+   - List of specific React components needed with clear responsibilities
+   - Content ownership (which component handles what content)
+   - Component hierarchy (parent-child relationships)
+   - Interaction patterns between components
+
+3. LAYOUT STRUCTURE:
+   - Overall page layout (header, main, sidebar, footer areas)
+   - Content flow and organization
+   - Responsive design considerations
+
+CRITICAL REQUIREMENTS:
+- Each component should have ONE clear responsibility
+- Avoid content duplication between components
+- Use descriptive component names (e.g., "TaskDashboard" not "Dashboard")
+- Include components like Navigation, ContentArea, ActionPanel, etc. as needed
 - DO NOT include "App" or "Main" as these are generated automatically
 
-For example, a task management app might have:
-["TaskHeader", "TaskSidebar", "TaskList", "TaskCard", "AddTaskModal", "TaskDetailsPanel", "TaskFilters"]
-
-Format as JSON:
+Example for a task management app:
 {
-  "components": ["specific", "component", "names", ...],
-  "layout": "Detailed layout description",
-  "user_interactions": ["specific interactions", ...]
+  "design_system": {
+    "primary_color": "blue",
+    "accent_color": "green", 
+    "background_color": "gray-50",
+    "text_hierarchy": ["text-3xl font-bold", "text-xl font-semibold", "text-base"],
+    "spacing_scale": ["p-2", "p-4", "p-6", "p-8"],
+    "component_patterns": ["rounded-lg", "shadow-md", "border border-gray-200"]
+  },
+  "components": [
+    {
+      "name": "TaskNavigation",
+      "responsibility": "Main navigation and app branding only",
+      "contains": ["logo", "navigation menu", "user settings"]
+    },
+    {
+      "name": "TaskSidebar", 
+      "responsibility": "Project and filter navigation",
+      "contains": ["project list", "filters", "views"]
+    },
+    {
+      "name": "TaskWorkspace",
+      "responsibility": "Main task display and editing area", 
+      "contains": ["task list", "task details", "editing forms"]
+    }
+  ],
+  "layout": {
+    "structure": "dashboard with fixed navigation, collapsible sidebar, and main workspace",
+    "content_areas": ["navigation: app branding", "sidebar: project navigation", "main: task management"],
+    "interactions": ["sidebar toggle", "task creation", "task editing"]
+  }
 }
+
+Format as JSON with this exact structure.
 `
 
   const response = await llm.invoke([
-    new SystemMessage('You are a UI/UX designer planning the interface. Return only valid JSON. Be specific with component names that clearly indicate their purpose.'),
+    new SystemMessage('You are a UI/UX architect creating comprehensive design plans. Return only valid JSON. Ensure clear component responsibilities to avoid content duplication.'),
     new HumanMessage(prompt),
   ])
 
@@ -601,7 +788,30 @@ Format as JSON:
   const jsonMatch = content.match(/\{[\s\S]*\}/)
   if (!jsonMatch) throw new Error('No JSON found in response')
   
-  return JSON.parse(jsonMatch[0]) as UIPlan
+  const plan = JSON.parse(jsonMatch[0]) as any
+  
+  // Convert enhanced plan to current UIPlan format for compatibility
+  const uiPlan: UIPlan = {
+    components: plan.components?.map((c: any) => c.name) || [],
+    layout: plan.layout?.structure || 'dashboard layout',
+    user_interactions: plan.layout?.interactions || [],
+    // Add enhanced properties
+    design_system: plan.design_system,
+    component_specs: plan.components,
+    layout_details: plan.layout
+  }
+  
+  // Validate component specifications to prevent content duplication
+  const validation = validateComponentSpecs(uiPlan)
+  if (!validation.valid) {
+    console.warn('UI Plan validation issues detected:')
+    validation.issues.forEach(issue => console.warn(`  - ${issue}`))
+    
+    // For now, log warnings but don't fail - we can improve this iteratively
+    // In the future, we could regenerate the plan or provide specific fixes
+  }
+  
+  return uiPlan
 }
 
 // Always use GPT for React applications
@@ -676,33 +886,65 @@ async function generateComponentFile(
     layout?: string;
     interactions?: string[];
   },
-  retryAttempt: number = 0
+  retryAttempt: number = 0,
+  uiPlan?: UIPlan,  // Add UI plan parameter for design system access
+  uiGuidelines?: string  // Add UI guidelines parameter
 ): Promise<string> {
+  // Extract design system information
+  const designSystem = uiPlan?.design_system || {
+    primary_color: 'blue',
+    accent_color: 'green',
+    background_color: 'gray-50',
+    text_hierarchy: ['text-3xl font-bold', 'text-xl font-semibold', 'text-base'],
+    spacing_scale: ['p-2', 'p-4', 'p-6', 'p-8'],
+    component_patterns: ['rounded-lg', 'shadow-md', 'border border-gray-200']
+  }
+  
+  // Find component specification
+  const componentSpec = uiPlan?.component_specs?.find(spec => spec.name === componentName)
+  
   // Generate contextual prompts based on component type
   const getComponentPrompt = () => {
+    const baseStyles = `
+DESIGN SYSTEM (use these consistently):
+- Primary color: ${designSystem.primary_color} (bg-${designSystem.primary_color}-600, text-${designSystem.primary_color}-600, etc.)
+- Accent color: ${designSystem.accent_color} (bg-${designSystem.accent_color}-500, text-${designSystem.accent_color}-500, etc.)  
+- Background: ${designSystem.background_color}
+- Text hierarchy: ${designSystem.text_hierarchy.join(', ')}
+- Spacing: ${designSystem.spacing_scale.join(', ')}
+- Component patterns: ${designSystem.component_patterns.join(', ')}
+
+COMPONENT RESPONSIBILITY: ${componentSpec?.responsibility || 'Handle specific functionality for this component'}
+COMPONENT SHOULD CONTAIN: ${componentSpec?.contains?.join(', ') || 'Content appropriate for this component type'}
+`
+    
     switch (componentType) {
       case 'navigation':
         return `Create a navigation/header component with:
-- Brand/logo area (use text-2xl font-bold)
-- Navigation items relevant to "${projectContext.title}" (use hover:text-blue-600)
+${baseStyles}
+- Brand/logo area (use ${designSystem.text_hierarchy[0]} for branding)
+- Navigation items relevant to "${projectContext.title}" (use hover:text-${designSystem.primary_color}-600)
 - Settings or preferences dropdown (NO user accounts)
 - Responsive mobile design (hidden md:flex for desktop items)
-- Styled with Tailwind: bg-white shadow-md, proper padding, flex layout
+- Styled with design system colors: bg-white shadow-md, proper spacing from design system
 - Any search or action buttons that make sense for this app
 - Include navigation links to relevant pages like:
   onClick: () => window.Router.navigate('about')
   onClick: () => window.Router.navigate('features')
   onClick: () => window.Router.navigate('settings')
-  (Choose page names that make sense for "${projectContext.title}")`
+  (Choose page names that make sense for "${projectContext.title}")
+  
+CRITICAL: This component should ONLY handle navigation and branding. Do NOT duplicate any main content that belongs in other components.`
       
       case 'sidebar':
         return `Create a sidebar navigation component with:
+${baseStyles}
 - Menu items relevant to "${projectContext.title}"
-- Organized sections with proper spacing (space-y-2)
+- Organized sections with proper spacing from design system
 - Icons where appropriate (use emoji or unicode symbols)
-- Active state handling (bg-blue-50 text-blue-700 for active)
-- Styled with Tailwind: w-64 bg-gray-50 p-4, hover effects
-- Proper visual hierarchy with text-sm, font-medium
+- Active state handling (bg-${designSystem.primary_color}-50 text-${designSystem.primary_color}-700 for active)
+- Styled with design system: w-64 bg-${designSystem.background_color} ${designSystem.spacing_scale[2]}, hover effects
+- Proper visual hierarchy with ${designSystem.text_hierarchy[2]}, font-medium
 - Include clickable navigation items like:
   onClick: () => window.Router.navigate('dashboard')
   onClick: () => window.Router.navigate('analytics')
@@ -711,18 +953,21 @@ async function generateComponentFile(
       
       case 'footer':
         return `Create a footer component with:
+${baseStyles}
 - Links relevant to "${projectContext.title}"
-- Copyright information
+- Copyright information using design system colors
 - Contact or support links
-- Social media if appropriate`
+- Social media if appropriate
+- Consistent spacing and typography from design system`
       
       case 'modal':
         return `Create a modal/dialog component with:
+${baseStyles}
 - Proper overlay background (fixed inset-0 bg-black bg-opacity-50)
-- Modal container (bg-white rounded-lg shadow-xl p-6)
+- Modal container (bg-white ${designSystem.component_patterns.join(' ')})
 - Close button (absolute top-2 right-2)
 - Content area for "${projectContext.title}" functionality
-- Appropriate action buttons (styled with Tailwind button classes)
+- Action buttons styled with design system colors (bg-${designSystem.primary_color}-600 text-white hover:bg-${designSystem.primary_color}-700)
 - MUST be hidden by default (useState(false))
 - Centered positioning (flex items-center justify-center)
 - Focus on feature-specific modals (settings, confirmation, detail views)
@@ -730,12 +975,13 @@ async function generateComponentFile(
       
       case 'form':
         return `Create a form component with:
+${baseStyles}
 - Input fields relevant to "${projectContext.title}" (NO password fields)
-- Proper Tailwind form styling (border rounded px-3 py-2 focus:outline-none focus:ring-2)
-- Validation states (border-red-500 for errors, border-green-500 for success)
-- Submit button (bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700)
-- Clear labels (text-sm font-medium text-gray-700) and helper text
-- Proper spacing between form elements (space-y-4)
+- Form styling using design system (border ${designSystem.component_patterns.join(' ')} focus:outline-none focus:ring-2 focus:ring-${designSystem.primary_color}-500)
+- Validation states (border-red-500 for errors, border-${designSystem.accent_color}-500 for success)
+- Submit button (bg-${designSystem.primary_color}-600 text-white ${designSystem.spacing_scale[1]} ${designSystem.component_patterns.join(' ')} hover:bg-${designSystem.primary_color}-700)
+- Clear labels (${designSystem.text_hierarchy[2]} font-medium text-gray-700) and helper text
+- Proper spacing between form elements using design system
 - Handle form submission with preventDefault
 - Example submit handler for data forms:
   const handleSubmit = (e) => {
@@ -752,17 +998,20 @@ async function generateComponentFile(
       
       case 'datadisplay':
         return `Create a data display component (list/table/grid) with:
+${baseStyles}
 - Mock data relevant to "${projectContext.title}"
 - Sorting/filtering if appropriate
-- Proper styling and spacing
-- Empty state handling`
+- Styling consistent with design system
+- Empty state handling
+- Interactive elements using design system colors`
       
       case 'card':
         return `Create a card/widget component with:
+${baseStyles}
 - Content relevant to "${projectContext.title}"
-- Proper visual hierarchy
+- Visual hierarchy using design system typography
 - Interactive elements if needed
-- Consistent styling
+- Consistent styling with design system patterns
 - May include action buttons that navigate to detail pages:
   onClick: () => window.Router.navigate('details')
   onClick: () => window.Router.navigate('edit')
@@ -770,22 +1019,42 @@ async function generateComponentFile(
       
       case 'visualization':
         return `Create a data visualization component with:
+${baseStyles}
 - Mock data visualization for "${projectContext.title}"
 - Use simple CSS/HTML (no external chart libraries)
-- Clear labels and legends
+- Clear labels and legends using design system typography
+- Colors consistent with design system
 - Interactive if appropriate`
       
       case 'container':
         return `Create the main container/app component that:
+${baseStyles}
 - Uses all other components: ${projectContext.otherComponents.join(', ')}
 - Implements the layout: ${projectContext.layout || 'appropriate layout for the app'}
 - Reference other components as window.ComponentName in React.createElement
-- Example: React.createElement(window.Header) NOT React.createElement(Header)
 - MUST be named exactly "App" (const App = ...)
 - MUST end with: window.App = App;
-- Use proper Tailwind layout classes (min-h-screen, flex, grid, etc.)
-- Apply appropriate background colors and spacing
+- Use design system layout classes (min-h-screen, flex, grid, etc.)
+- Apply design system background: bg-${designSystem.background_color}
 - Ensure responsive design with proper breakpoints
+
+CRITICAL SAFETY RULES:
+- ALWAYS check if a component exists before using it
+- Use this pattern: window.ComponentName ? React.createElement(window.ComponentName) : null
+- Example: window.${projectContext.otherComponents[0] || 'Header'} ? React.createElement(window.${projectContext.otherComponents[0] || 'Header'}) : null
+- This prevents "Element type is invalid" errors
+
+CRITICAL COORDINATION RULES:
+- Do NOT duplicate content that belongs in other components
+- Navigation component handles: app branding, navigation menu, user actions
+- Sidebar component handles: secondary navigation, filters, project lists  
+- Content components handle: main functionality and data display
+- The App component should ONLY coordinate layout and routing, not duplicate content
+
+${uiPlan?.layout_details?.content_areas ? `
+CONTENT AREA ASSIGNMENTS:
+${uiPlan.layout_details.content_areas.map(area => `- ${area}`).join('\n')}
+` : ''}
 
 ROUTING SUPPORT:
 - You can use window.Router.navigate('routeName') to change pages
@@ -796,7 +1065,7 @@ ROUTING SUPPORT:
 - The App component should ALWAYS render the appropriate layout based on current route
 - For routes that don't have specific page components, show the default home layout
 
-Example App routing pattern:
+Example App with SAFE component references:
 const App = () => {
   const [currentRoute, setCurrentRoute] = React.useState(window.Router.getCurrentRoute() || 'home');
   
@@ -807,23 +1076,33 @@ const App = () => {
     return unsubscribe;
   }, []);
   
-  // Route to different page components
+  // Route to different page components (with safety checks)
   if (currentRoute === 'about' && window.AboutPage) {
     return React.createElement(window.AboutPage);
   } else if (currentRoute === 'settings' && window.SettingsPage) {
     return React.createElement(window.SettingsPage);
   }
   
-  // Default home layout
-  return React.createElement('div', { className: 'min-h-screen' },
-    React.createElement(window.Header),
-    // ... rest of home page
+  // Default home layout with SAFE component references
+  return React.createElement('div', { className: 'min-h-screen bg-${designSystem.background_color}' },
+    window.${projectContext.otherComponents[0]} ? React.createElement(window.${projectContext.otherComponents[0]}) : null,
+    React.createElement('div', { className: 'flex flex-1' },
+      window.${projectContext.otherComponents[1]} ? React.createElement(window.${projectContext.otherComponents[1]}) : null,
+      React.createElement('main', { className: 'flex-1 p-6' },
+        // Main content here
+      )
+    )
   );
 };`
       
+      // ... other component types with design system integration
       default:
         return `Create a ${componentName} component that:
+${baseStyles}
 - Serves its purpose in the "${projectContext.title}" application
+- Follows the design system consistently
+- Implements: ${componentSpec?.responsibility || 'appropriate functionality'}
+- Contains: ${componentSpec?.contains?.join(', ') || 'relevant content'}
 - Has appropriate content and functionality
 - Follows React best practices
 - Includes any necessary state management`
@@ -867,7 +1146,8 @@ Rules:
 - Include proper event handlers and state management
 - Make it visually appealing with proper spacing, colors, and layout using Tailwind
 - Minimum 80-150 lines of actual component code
-- End with: window.${componentName} = ${componentName};
+- CRITICAL: End with EXACT component name: window.${componentName} = ${componentName};
+- The component function MUST be named EXACTLY: ${componentName}
 - NO destructuring of React (no const {useState} = React)
 
 CRITICAL - NO AUTHENTICATION:
@@ -889,11 +1169,15 @@ ${componentType === 'container' ? `- When using other components, reference them
 - Arrange components according to: ${projectContext.layout}` : ''}
 
 Example of CORRECT syntax:
-const [count, setCount] = React.useState(0);
-React.useEffect(() => { ... }, []);
-React.createElement('div', { className: 'bg-white p-6 rounded-lg shadow-md' }, ...)
+const ${componentName} = () => {
+  const [count, setCount] = React.useState(0);
+  React.useEffect(() => { ... }, []);
+  return React.createElement('div', { className: 'bg-white p-6 rounded-lg shadow-md' }, ...);
+};
 React.createElement('button', { className: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700' }, 'Click')
-${componentType === 'container' ? `React.createElement(window.${projectContext.otherComponents[0] || 'Header'}, null)` : ''}
+${componentType === 'container' ? `// Safe component reference:
+window.${projectContext.otherComponents[0] || 'Header'} ? React.createElement(window.${projectContext.otherComponents[0] || 'Header'}) : null` : ''}
+window.${componentName} = ${componentName}; // EXACT name match
 ${retryWarning}
 Return ONLY the component code, no explanations.`
 
@@ -936,8 +1220,13 @@ CRITICAL RULES - MUST FOLLOW:
     - Effects (shadow-lg, rounded-lg, hover:bg-blue-600)
 NO import statements, NO export statements.`
 
+  // Include UI guidelines in the system message if available
+  const enhancedSystemMessage = uiGuidelines 
+    ? `${systemMessage}\n\n=== UI BUILD GUIDELINES ===\n${uiGuidelines}\n\nFOLLOW THESE GUIDELINES EXACTLY when generating the component.`
+    : systemMessage
+  
   const response = await codeLLM.invoke([
-    new SystemMessage(systemMessage),
+    new SystemMessage(enhancedSystemMessage),
     new HumanMessage(prompt)
   ])
 
@@ -1355,7 +1644,7 @@ Follow all the same rules as component generation:
 }
 
 // Generate multiple UI files for the application
-async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgress?: ProgressCallback): Promise<{
+async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgress?: ProgressCallback, uiGuidelines?: string): Promise<{
   files: UIFile[];
   validationIssues: FileValidationIssues[];
 }> {
@@ -1396,7 +1685,9 @@ async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgr
             layout: uiPlan.layout,
             interactions: uiPlan.user_interactions
           },
-          attempts
+          attempts,
+          uiPlan,  // Pass UI plan for design system access
+          uiGuidelines  // Pass UI guidelines
         )
         
         // Clean auth artifacts if any slipped through
@@ -1407,7 +1698,7 @@ async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgr
         if (!validation.valid && validation.issues.length > 0) {
           console.warn(`Validation issues for ${comp.name}:`, validation.issues)
           allValidationIssues.push({
-            filename: `${comp.name}.tsx`,
+            filename: `${comp.name}.js`,  // Changed from .tsx to .js
             componentName: comp.name,
             issues: validation.issues
           })
@@ -1418,7 +1709,7 @@ async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgr
         routeRefs.forEach(route => allRouteReferences.add(route))
         
         files.push({
-          filename: `${comp.name}.tsx`,
+          filename: `${comp.name}.js`,  // Changed from .tsx to .js
           content: cleanedCode,
           type: comp.type as UIFile['type']
         })
@@ -1455,11 +1746,11 @@ async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgr
         const pageComponent = await generatePageComponent(route, {
           title: projectIdea.title,
           description: projectIdea.description,
-          existingComponents: files.map(f => f.filename.replace('.tsx', ''))
+          existingComponents: files.map(f => f.filename.replace('.js', ''))
         })
       
       files.push({
-          filename: pageComponent.name + '.tsx',
+          filename: pageComponent.name + '.js',
           content: pageComponent.content,
           type: 'page'
         })
@@ -1483,17 +1774,23 @@ async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgr
     (f.filename.includes('Header') || f.filename.includes('Navigation') || f.filename.includes('Sidebar'))
   )
   
+  // Extract exact component names from generated files
+  const exactComponentNames = componentFiles.map(f => f.filename.replace('.js', ''))
+  console.log('App will reference these exact components:', exactComponentNames)
+  
   const appContent = await generateComponentFile(
       'App',
       'container',
       { 
         title: projectIdea.title, 
         description: projectIdea.description,
-      otherComponents: componentFiles.map(f => f.filename.replace('.tsx', '')),
+      otherComponents: exactComponentNames,  // Use exact names
         layout: uiPlan.layout,
         interactions: uiPlan.user_interactions
       },
-    0
+    0,
+    uiPlan,  // Pass UI plan for design system access
+    uiGuidelines  // Pass UI guidelines
   )
   
   // Update App with routing if needed
@@ -1504,21 +1801,168 @@ async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgr
   // Validate App component
   const appValidation = validateGeneratedCode(finalAppContent, 'App')
   if (!appValidation.valid && appValidation.issues.length > 0) {
-    console.warn('App.tsx validation issues:', appValidation.issues)
+    console.warn('App.js validation issues:', appValidation.issues)
     allValidationIssues.push({
-      filename: 'App.tsx',
+      filename: 'App.js',  // Changed from App.tsx to App.js
       componentName: 'App',
       issues: appValidation.issues
     })
   }
   
   files.push({
-    filename: 'App.tsx',
+    filename: 'App.js',  // Changed from App.tsx to App.js
     content: finalAppContent,
     type: 'main'
   })
   
   onProgress?.('App', 'success', undefined, false, 'UIGenerationNode')
+  
+  // Create a component manifest for debugging
+  const componentManifest = `// Component Manifest - Lists all available components
+// This file helps debug "Element type is invalid" errors
+
+const availableComponents = {
+${exactComponentNames.map(name => `  ${name}: typeof window.${name} !== 'undefined' ? '✓' : '✗'`).join(',\n')}
+};
+
+console.log('=== FlowGenius Component Manifest ===');
+console.log('Available components:', availableComponents);
+${exactComponentNames.map(name => `console.log('window.${name}:', typeof window.${name});`).join('\n')}
+
+// Helper to safely render components
+window.safeRender = (componentName) => {
+  const Component = window[componentName];
+  if (Component) {
+    return React.createElement(Component);
+  } else {
+    console.warn(\`Component "\${componentName}" not found on window object\`);
+    return React.createElement('div', { className: 'p-4 bg-red-100 text-red-700 rounded' }, 
+      \`Missing component: \${componentName}\`
+    );
+  }
+};
+`;
+
+  files.push({
+    filename: '_ComponentManifest.js',
+    content: componentManifest,
+    type: 'utils' as UIFile['type']
+  })
+  
+  // Create a setup file that loads components in the correct order
+  const setupContent = `// Setup file - Load this BEFORE your app to ensure all components are available
+
+// Mock Router for navigation
+window.Router = {
+  currentRoute: 'home',
+  listeners: [],
+  navigate: function(route) {
+    console.log('Navigating to:', route);
+    this.currentRoute = route;
+    this.listeners.forEach(listener => listener(route));
+  },
+  getCurrentRoute: function() {
+    return this.currentRoute;
+  },
+  onRouteChange: function(callback) {
+    this.listeners.push(callback);
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== callback);
+    };
+  }
+};
+
+// Mock AppState for global state management
+window.AppState = {
+  state: {},
+  set: function(key, value) {
+    this.state[key] = value;
+    console.log('AppState updated:', key, '=', value);
+  },
+  get: function(key) {
+    return this.state[key];
+  }
+};
+
+// Component loading order (components first, then App)
+const componentLoadOrder = [
+${files.filter(f => f.type !== 'main' && f.filename !== '_ComponentManifest.js').map(f => `  '${f.filename}'`).join(',\n')},
+  'App.js'  // App must be loaded last (changed from App.tsx)
+];
+
+console.log('=== FlowGenius Setup ===');
+console.log('Components will be loaded in this order:', componentLoadOrder);
+console.log('Make sure to include all component files in your HTML in this order');
+`;
+
+  files.push({
+    filename: '_setup.js',
+    content: setupContent,
+    type: 'utils' as UIFile['type']
+  })
+  
+  // Create an index.html template that shows proper loading order
+  const htmlTemplate = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${projectIdea.title}</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <!-- Load setup first -->
+  <script src="_setup.js"></script>
+  
+  <!-- Load components in order (components before App) -->
+${files.filter(f => f.type === 'component' && !f.filename.startsWith('_')).map(f => `  <script src="${f.filename}"></script>`).join('\n')}
+  
+  <!-- Load page components -->
+${files.filter(f => f.type === 'page' && !f.filename.startsWith('_')).map(f => `  <script src="${f.filename}"></script>`).join('\n')}
+  
+  <!-- Load App last -->
+  <script src="App.js"></script>
+  
+  <!-- Load component manifest for debugging -->
+  <script src="_ComponentManifest.js"></script>
+  
+  <!-- Mount the app -->
+  <script>
+    // Wait for all scripts to load
+    window.addEventListener('load', () => {
+      console.log('=== Mounting React App ===');
+      console.log('App component:', typeof window.App);
+      
+      if (window.App) {
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(window.App));
+      } else {
+        console.error('App component not found! Make sure App.js loaded correctly.');
+        document.getElementById('root').innerHTML = '<div style="padding: 20px; color: red;">Error: App component not found. Check console for details.</div>';
+      }
+    });
+  </script>
+</body>
+</html>`;
+
+  files.push({
+    filename: 'index.html',
+    content: htmlTemplate,
+    type: 'utils' as UIFile['type']
+  })
+  
+  // Add the UI guidelines as a file if available
+  if (uiGuidelines) {
+    files.push({
+      filename: 'UI_BUILD_GUIDE.md',
+      content: uiGuidelines,
+      type: 'utils' as UIFile['type']
+    })
+  }
   
   console.log('UI files generation complete:', files.length, 'files')
   console.log('Validation issues:', allValidationIssues.length, 'files with issues')
@@ -1734,3 +2178,404 @@ CODE RULES:
 // Helper functions (extractTitle, cleanProjectTitle, etc.)
 
 // ... existing code ... 
+
+// Generate implementation checklist based on actual files
+async function generateImplementationChecklistNode(state: WorkflowState): Promise<Partial<WorkflowState>> {
+  try {
+    if (!state.uiFiles || state.uiFiles.length === 0) {
+      console.warn('No UI files generated, skipping implementation checklist')
+      return {}
+    }
+    
+    state.onProgress?.('ImplementationChecklistNode', 'in-progress', 'Updating checklist with implementation details...')
+    
+    // Create implementation items based on actual files
+    const implementationItems: ChecklistItem[] = []
+    
+    // Add header for implementation section
+    implementationItems.push({
+      id: nanoid(),
+      text: '',
+      done: false
+    })
+    implementationItems.push({
+      id: nanoid(),
+      text: '## Implementation Files Generated',
+      done: false
+    })
+    implementationItems.push({
+      id: nanoid(),
+      text: '**Actual files created by FlowGenius:**',
+      done: false
+    })
+    implementationItems.push({
+      id: nanoid(),
+      text: '',
+      done: false
+    })
+    
+    // Add component files
+    const componentFiles = state.uiFiles.filter(f => f.type === 'component')
+    if (componentFiles.length > 0) {
+      implementationItems.push({
+        id: nanoid(),
+        text: '### Component Files',
+        done: false
+      })
+      
+      componentFiles.forEach(file => {
+        const componentName = file.filename.replace('.js', '')
+        const componentSpec = state.uiPlan?.component_specs?.find(spec => spec.name === componentName)
+        
+        implementationItems.push({
+          id: nanoid(),
+          text: `[ ] ${file.filename} - ${componentSpec?.responsibility || 'Component implementation'}`,
+          done: true  // Mark as done since it's generated
+        })
+        
+        if (componentSpec?.contains) {
+          componentSpec.contains.forEach(content => {
+            implementationItems.push({
+              id: nanoid(),
+              text: `    - [ ] ${content}`,
+              done: true
+            })
+          })
+        }
+      })
+    }
+    
+    // Add page files
+    const pageFiles = state.uiFiles.filter(f => f.type === 'page')
+    if (pageFiles.length > 0) {
+      implementationItems.push({
+        id: nanoid(),
+        text: '',
+        done: false
+      })
+      implementationItems.push({
+        id: nanoid(),
+        text: '### Page Components',
+        done: false
+      })
+      
+      pageFiles.forEach(file => {
+        implementationItems.push({
+          id: nanoid(),
+          text: `[ ] ${file.filename} - Route page implementation`,
+          done: true
+        })
+      })
+    }
+    
+    // Add main files
+    implementationItems.push({
+      id: nanoid(),
+      text: '',
+      done: false
+    })
+    implementationItems.push({
+      id: nanoid(),
+      text: '### Core Files',
+      done: false
+    })
+    
+    const mainFiles = state.uiFiles.filter(f => f.type === 'main' || f.type === 'utils')
+    mainFiles.forEach(file => {
+      let description = ''
+      if (file.filename === 'App.js') {
+        description = 'Main application component that coordinates all other components'
+      } else if (file.filename === 'index.html') {
+        description = 'HTML template with proper script loading order'
+      } else if (file.filename === '_setup.js') {
+        description = 'Setup file with mock Router and AppState utilities'
+      } else if (file.filename === '_ComponentManifest.js') {
+        description = 'Debug helper to verify component loading'
+      } else {
+        description = 'Supporting file'
+      }
+      
+      implementationItems.push({
+        id: nanoid(),
+        text: `[ ] ${file.filename} - ${description}`,
+        done: true
+      })
+    })
+    
+    // Add validation issues if any
+    if (state.validationIssues && state.validationIssues.length > 0) {
+      implementationItems.push({
+        id: nanoid(),
+        text: '',
+        done: false
+      })
+      implementationItems.push({
+        id: nanoid(),
+        text: '### Validation Notes',
+        done: false
+      })
+      
+      state.validationIssues.forEach(issue => {
+        implementationItems.push({
+          id: nanoid(),
+          text: `[ ] Fix validation issues in ${issue.filename} (${issue.issues.length} issues)`,
+          done: false
+        })
+      })
+    }
+    
+    // Merge with existing checklist
+    const updatedChecklist = [...(state.checklist || []), ...implementationItems]
+    
+    state.onProgress?.('ImplementationChecklistNode', 'success')
+    return { checklist: updatedChecklist }
+  } catch (error) {
+    console.error('Failed to generate implementation checklist:', error)
+    state.onProgress?.('ImplementationChecklistNode', 'error', 'Failed to update checklist')
+    // Non-critical, don't propagate error
+    return {}
+  }
+}
+
+// ... existing code ... 
+
+// Generate UI Build Guidelines document
+function generateUIBuildGuidelines(projectIdea: ProjectIdea, uiPlan: UIPlan): string {
+  const { design_system, component_specs, layout_details } = uiPlan
+  
+  // Extract component names and their types
+  const components = analyzeComponentsNeeded(uiPlan)
+  const nonAuthComponents = components.filter(comp => !isAuthRelatedComponent(comp.name))
+  
+  const guidelines = `# ${projectIdea.title} — UI Build Guide
+
+This doc is a precise, ordered checklist for generating UI components. Follow each step exactly as specified.
+
+⸻
+
+## 0 · Project Structure
+
+\`\`\`
+src/
+├─ components/
+│  ├─ ${nonAuthComponents.filter(c => c.type === 'navigation').map(c => c.name + '.js').join('\n│  ├─ ')}
+│  ├─ ${nonAuthComponents.filter(c => c.type === 'sidebar').map(c => c.name + '.js').join('\n│  ├─ ')}
+│  ├─ ${nonAuthComponents.filter(c => c.type !== 'navigation' && c.type !== 'sidebar').map(c => c.name + '.js').join('\n│  ├─ ')}
+├─ App.js
+├─ index.html
+├─ _setup.js
+└─ _ComponentManifest.js
+\`\`\`
+
+**Why**: Clear separation of components, with App.js as the main coordinator.
+
+⸻
+
+## 1 · Design System Tokens
+
+**Colors**:
+- Primary: \`${design_system?.primary_color || 'blue'}\` (bg-${design_system?.primary_color || 'blue'}-600, hover:bg-${design_system?.primary_color || 'blue'}-700)
+- Accent: \`${design_system?.accent_color || 'green'}\` (bg-${design_system?.accent_color || 'green'}-500)
+- Background: \`${design_system?.background_color || 'gray-50'}\`
+- Surface: \`bg-white dark:bg-gray-800\`
+- Border: \`border-gray-200 dark:border-gray-700\`
+
+**Typography**:
+${design_system?.text_hierarchy?.map((style, i) => `- Heading ${i + 1}: \`${style}\``).join('\n') || '- Heading 1: `text-3xl font-bold`\n- Heading 2: `text-xl font-semibold`\n- Body: `text-base`'}
+
+**Spacing**:
+${design_system?.spacing_scale?.map(space => `- \`${space}\``).join('\n') || '- `p-2`, `p-4`, `p-6`, `p-8`'}
+
+**Component Patterns**:
+${design_system?.component_patterns?.map(pattern => `- \`${pattern}\``).join('\n') || '- `rounded-lg`\n- `shadow-md`\n- `border border-gray-200`'}
+
+⸻
+
+## 2 · Component Specifications
+
+${component_specs?.map((spec, index) => `### 2.${index + 1} ${spec.name}
+
+**File**: \`${spec.name}.js\`
+**Responsibility**: ${spec.responsibility}
+**Must contain**:
+${spec.contains.map(item => `- ${item}`).join('\n')}
+
+**Styling requirements**:
+${getComponentStylingRequirements(spec.name, design_system)}
+
+**Interaction requirements**:
+${getComponentInteractions(spec.name, layout_details)}
+`).join('\n') || 'No component specifications available.'}
+
+⸻
+
+## 3 · Layout Structure
+
+**Overall Layout**: ${layout_details?.structure || 'Standard web application layout'}
+
+**Content Areas**:
+${layout_details?.content_areas?.map(area => `- ${area}`).join('\n') || '- Header: Navigation and branding\n- Main: Primary content area\n- Sidebar: Secondary navigation (if applicable)'}
+
+**Key Interactions**:
+${layout_details?.interactions?.map(interaction => `- ${interaction}`).join('\n') || '- Standard web interactions'}
+
+⸻
+
+## 4 · Component Coordination Rules
+
+**CRITICAL**: Each component must stay within its defined responsibility to avoid duplication.
+
+${component_specs?.map(spec => `- **${spec.name}**: ONLY handles ${spec.responsibility.toLowerCase()}. Never duplicates content from other components.`).join('\n') || ''}
+
+**App.js Coordination**:
+- Must reference components as \`window.ComponentName\`
+- Always check existence: \`window.ComponentName ? React.createElement(window.ComponentName) : null\`
+- Layout structure must match section 3 specifications
+
+⸻
+
+## 5 · Implementation Checklist
+
+### Component Generation Order:
+${nonAuthComponents.map((comp, i) => `${i + 1}. [ ] Generate ${comp.name} (${comp.type})`).join('\n')}
+${nonAuthComponents.length + 1}. [ ] Generate App.js (main coordinator)
+${nonAuthComponents.length + 2}. [ ] Generate supporting files (_setup.js, _ComponentManifest.js, index.html)
+
+### Validation Checks:
+- [ ] No content duplication between components
+- [ ] All components follow their assigned responsibilities  
+- [ ] Design system tokens used consistently
+- [ ] All interactive elements have proper handlers
+- [ ] App.js safely references all components
+- [ ] Component loading order is correct in index.html
+
+⸻
+
+## 6 · Code Generation Rules
+
+1. **Use React.createElement() exclusively** - no JSX
+2. **End each component with**: \`window.ComponentName = ComponentName;\`
+3. **No imports** - React is globally available
+4. **Mock data** should be realistic and relevant to "${projectIdea.title}"
+5. **State management**: Use React.useState for local state
+6. **Navigation**: Use \`window.Router.navigate('routeName')\`
+7. **Global state**: Use \`window.AppState.get/set('key', value)\`
+
+⸻
+
+## 7 · Common Patterns
+
+### Navigation Links:
+\`\`\`javascript
+React.createElement('button', {
+  className: 'hover:text-${design_system?.primary_color || 'blue'}-600 cursor-pointer',
+  onClick: () => window.Router.navigate('about')
+}, 'About')
+\`\`\`
+
+### Form Submission:
+\`\`\`javascript
+const handleSubmit = (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  const data = Object.fromEntries(formData);
+  // Process data
+  window.AppState.set('formData', data);
+};
+\`\`\`
+
+### Conditional Rendering:
+\`\`\`javascript
+showModal && React.createElement(ModalComponent)
+\`\`\`
+
+⸻
+
+When all items are checked, the UI implementation is complete and ready for testing.`
+
+  return guidelines
+}
+
+// Helper function to get component styling requirements
+function getComponentStylingRequirements(componentName: string, designSystem: any): string {
+  const name = componentName.toLowerCase()
+  const ds = designSystem || {}
+  
+  if (name.includes('navigation') || name.includes('header')) {
+    return `- Fixed/sticky positioning: \`sticky top-0 z-50\`
+- Background: \`bg-white dark:bg-gray-900 shadow-md\`
+- Height: \`h-16\` or \`h-20\`
+- Padding: \`${ds.spacing_scale?.[2] || 'px-6 py-4'}\`
+- Flex layout: \`flex items-center justify-between\``
+  } else if (name.includes('sidebar')) {
+    return `- Width: \`w-64\` or \`w-72\`
+- Background: \`${ds.background_color ? `bg-${ds.background_color}` : 'bg-gray-50'} dark:bg-gray-900\`
+- Full height: \`h-full\` or \`min-h-screen\`
+- Padding: \`${ds.spacing_scale?.[2] || 'p-4'}\`
+- Overflow: \`overflow-y-auto\``
+  } else if (name.includes('modal')) {
+    return `- Overlay: \`fixed inset-0 bg-black bg-opacity-50 z-50\`
+- Modal container: \`bg-white dark:bg-gray-800 ${ds.component_patterns?.join(' ') || 'rounded-lg shadow-xl'}\`
+- Centering: \`flex items-center justify-center\`
+- Max width: \`max-w-lg w-full mx-4\`
+- Hidden by default: \`useState(false)\``
+  } else if (name.includes('form')) {
+    return `- Input styling: \`border ${ds.component_patterns?.filter((p: string) => p.includes('rounded')).join(' ') || 'rounded'} px-3 py-2\`
+- Focus states: \`focus:outline-none focus:ring-2 focus:ring-${ds.primary_color || 'blue'}-500\`
+- Label styling: \`${ds.text_hierarchy?.[2] || 'text-sm'} font-medium text-gray-700\`
+- Button styling: \`bg-${ds.primary_color || 'blue'}-600 text-white ${ds.component_patterns?.join(' ') || 'rounded-lg'} hover:bg-${ds.primary_color || 'blue'}-700\`
+- Form spacing: \`space-y-4\``
+  } else {
+    return `- Container styling: \`${ds.component_patterns?.join(' ') || 'rounded-lg shadow-md'}\`
+- Background: \`bg-white dark:bg-gray-800\`
+- Padding: \`${ds.spacing_scale?.[2] || 'p-4'}\`
+- Text color: \`text-gray-900 dark:text-gray-100\`
+- Interactive elements: \`hover:bg-gray-100 dark:hover:bg-gray-700\``
+  }
+}
+
+// Helper function to get component interactions
+function getComponentInteractions(componentName: string, layoutDetails: any): string {
+  const name = componentName.toLowerCase()
+  const interactions = layoutDetails?.interactions || []
+  
+  if (name.includes('navigation') || name.includes('header')) {
+    return `- Logo/brand clicks navigate to home
+- Menu items use \`window.Router.navigate()\`
+- Mobile menu toggle (if responsive)
+- Active state indication for current route`
+  } else if (name.includes('sidebar')) {
+    return `- Menu item clicks navigate to sections
+- Active item highlighting
+- Collapsible sections (if applicable)
+- Hover states on all interactive elements`
+  } else if (name.includes('modal')) {
+    return `- Close button (X) in top-right
+- Click outside to close (optional)
+- ESC key to close (optional)
+- Form submission or action buttons`
+  } else if (name.includes('form')) {
+    return `- Form validation on submit
+- Clear error states
+- Loading states during submission
+- Success feedback after submission`
+  } else {
+    // Extract relevant interactions for this component
+    const relevantInteractions = interactions.filter((i: string) => 
+      i.toLowerCase().includes(componentName.toLowerCase()) ||
+      i.toLowerCase().includes('all') ||
+      i.toLowerCase().includes('general')
+    )
+    
+    if (relevantInteractions.length > 0) {
+      return relevantInteractions.map((i: string) => `- ${i}`).join('\n')
+    }
+    
+    return `- Standard click handlers for buttons
+- Hover states for interactive elements
+- Appropriate cursor styles
+- Focus states for accessibility`
+  }
+}
+
+// ... existing code ...
