@@ -195,13 +195,15 @@ ipcMain.handle(IPC_CHANNELS.GENERATE_PROJECT, async (event, data: { idea: string
   }
   
   try {
-    const result = await runWorkflow(idea, (node, status, message) => {
-      console.log('IPC: Progress update -', node, status, message || '')
-      // Send progress updates to renderer
+    const result = await runWorkflow(idea, (node, status, message, isParent, parentNode) => {
+      console.log('IPC: Progress update -', node, status, message || '', isParent ? '(parent)' : '', parentNode || '')
+      // Send progress updates to renderer with hierarchical info
       event.sender.send(IPC_CHANNELS.GENERATION_PROGRESS, {
         node,
         status,
-        message
+        message,
+        isParent,
+        parentNode
       })
     }, chatHistory)
     

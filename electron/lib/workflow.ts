@@ -57,8 +57,14 @@ const codeLLM = new ChatOpenAI({
   temperature: 0.5,
 })
 
-// Progress callback type
-type ProgressCallback = (node: string, status: 'pending' | 'in-progress' | 'success' | 'error', message?: string) => void
+// Progress callback type with support for hierarchical nodes
+type ProgressCallback = (
+  node: string, 
+  status: 'pending' | 'in-progress' | 'success' | 'error', 
+  message?: string,
+  isParent?: boolean,
+  parentNode?: string
+) => void
 
 // ===== LangGraph Node Functions =====
 
@@ -126,6 +132,19 @@ async function generateUIPlanNode(state: WorkflowState): Promise<Partial<Workflo
     state.onProgress?.('UIPlannerNode', 'in-progress', 'Planning UI components...')
     const uiPlan = await generateUIPlan(state.projectIdea, state.prd)
     state.onProgress?.('UIPlannerNode', 'success')
+    
+    // After planning, show all components that will be generated as pending
+    const componentsToGenerate = analyzeComponentsNeeded(uiPlan)
+    const nonAuthComponents = componentsToGenerate.filter(comp => !isAuthRelatedComponent(comp.name))
+    
+    // Send pending status for all components that will be generated
+    for (const comp of nonAuthComponents) {
+      state.onProgress?.(comp.name, 'pending', undefined, false, 'UIGenerationNode')
+    }
+    
+    // Also show App.tsx as pending
+    state.onProgress?.('App', 'pending', undefined, false, 'UIGenerationNode')
+    
     return { uiPlan }
   } catch (error) {
     state.onProgress?.('UIPlannerNode', 'error', error instanceof Error ? error.message : 'Failed to generate UI plan')
@@ -155,8 +174,7 @@ async function generateUINode(state: WorkflowState): Promise<Partial<WorkflowSta
     }
     
     if (state.uiStrategy === 'gpt') {
-      state.onProgress?.('GPTUICodeNode', 'in-progress', 'Generating UI code...')
-      
+      // Don't send GPTUICodeNode progress - it's redundant with UIGenerationNode
       try {
         const generateResult = await generateUIFiles(state.projectIdea, state.uiPlan, state.onProgress)
         const uiFiles = generateResult.files
@@ -165,12 +183,10 @@ async function generateUINode(state: WorkflowState): Promise<Partial<WorkflowSta
         // Also generate single file for backwards compatibility
         const uiCode = uiFiles.map(file => `// File: ${file.filename}\n${file.content}`).join('\n\n')
         
-        state.onProgress?.('GPTUICodeNode', 'success')
         return { uiFiles, uiCode, validationIssues }
       } catch (error) {
         console.error('Multi-file generation failed, falling back to single file:', error)
         const uiCode = await generateUICode(state.projectIdea, state.uiPlan)
-        state.onProgress?.('GPTUICodeNode', 'success')
         return { uiCode }
       }
     } else {
@@ -180,7 +196,7 @@ async function generateUINode(state: WorkflowState): Promise<Partial<WorkflowSta
       return { v0Prompt }
     }
   } catch (error) {
-    const nodeName = state.uiStrategy === 'gpt' ? 'GPTUICodeNode' : 'V0PromptNode'
+    const nodeName = state.uiStrategy === 'gpt' ? 'UIGenerationNode' : 'V0PromptNode'
     state.onProgress?.(nodeName, 'error', error instanceof Error ? error.message : 'Failed to generate UI')
     return { error: error instanceof Error ? error.message : 'Failed to generate UI' }
   }
@@ -256,6 +272,11 @@ export async function runWorkflow(
   const projectId = nanoid()
   console.log('🦜️🔗 Starting LangGraph workflow for project:', projectId)
   
+  // Create a wrapped progress callback that adds hierarchical info
+  const wrappedProgress: ProgressCallback = (node, status, message, isParent, parentNode) => {
+    onProgress(node, status, message, isParent, parentNode)
+  }
+  
   try {
     const workflow = createWorkflow()
     
@@ -263,7 +284,7 @@ export async function runWorkflow(
       idea,
       chatHistory: chatHistory || [],
       projectId,
-      onProgress
+      onProgress: wrappedProgress
     })
     
     if (result.error) {
@@ -1114,7 +1135,14 @@ function extractRouteReferences(code: string): string[] {
     const route = match[1]
     // Skip common routes that might be the default
     // ALSO skip auth-related routes
-    if (route && route !== 'home' && route !== '/' && !isAuthRelatedComponent(route)) {
+    // AND skip dynamic routes with template literals or variables
+    if (route && 
+        route !== 'home' && 
+        route !== '/' && 
+        !isAuthRelatedComponent(route) &&
+        !route.includes('${') && // Skip template literals
+        !route.includes('/') &&   // Skip nested routes for now
+        /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(route)) { // Only allow simple route names
       routes.add(route)
     }
   }
@@ -1123,10 +1151,19 @@ function extractRouteReferences(code: string): string[] {
   const routeCheckPattern = /getCurrentRoute\s*\(\s*\)\s*===\s*['"`]([^'"`]+)['"`]/g
   while ((match = routeCheckPattern.exec(code)) !== null) {
     const route = match[1]
-    if (route && route !== 'home' && route !== '/' && !isAuthRelatedComponent(route)) {
+    if (route && 
+        route !== 'home' && 
+        route !== '/' && 
+        !isAuthRelatedComponent(route) &&
+        !route.includes('${') && // Skip template literals
+        !route.includes('/') &&   // Skip nested routes for now
+        /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(route)) { // Only allow simple route names
       routes.add(route)
     }
   }
+  
+  // Log what routes we found for debugging
+  console.log('Extracted valid routes:', Array.from(routes))
   
   return Array.from(routes)
 }
@@ -1140,16 +1177,28 @@ async function generatePageComponent(
     existingComponents: string[];
   }
 ): Promise<{ name: string; content: string }> {
-  // Convert route name to component name (e.g., 'profile' -> 'ProfilePage')
-  const componentName = routeName.charAt(0).toUpperCase() + routeName.slice(1) + 'Page'
+  // Sanitize route name - remove any dynamic parts or invalid characters
+  const sanitizedRoute = routeName
+    .replace(/\$\{[^}]+\}/g, '') // Remove template literals
+    .replace(/[^a-zA-Z0-9_-]/g, '') // Remove invalid characters
+    .toLowerCase()
   
-  const prompt = `Create a React page component for the "${routeName}" route in the "${projectContext.title}" application.
+  if (!sanitizedRoute) {
+    throw new Error(`Invalid route name: ${routeName}`)
+  }
+  
+  // Convert route name to component name (e.g., 'profile' -> 'ProfilePage')
+  const componentName = sanitizedRoute.charAt(0).toUpperCase() + sanitizedRoute.slice(1) + 'Page'
+  
+  console.log(`Generating page component: ${componentName} for route: ${sanitizedRoute}`)
+  
+  const prompt = `Create a React page component for the "${sanitizedRoute}" route in the "${projectContext.title}" application.
 
-This is a full page component that will be shown when the user navigates to the "${routeName}" route.
+This is a full page component that will be shown when the user navigates to the "${sanitizedRoute}" route.
 The application already has these components: ${projectContext.existingComponents.join(', ')}
 
 Requirements:
-- Create a complete page layout with relevant content for "${routeName}"
+- Create a complete page layout with relevant content for "${sanitizedRoute}"
 - Include navigation back to other pages using window.Router.navigate()
 - Use the existing components where appropriate (reference as window.ComponentName)
 - Add rich, meaningful content that fits the "${projectContext.title}" application
@@ -1216,320 +1265,179 @@ Follow all the same rules as component generation:
   }
 }
 
-// Generate multiple UI files by creating components sequentially
+// Generate multiple UI files for the application
 async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgress?: ProgressCallback): Promise<{
   files: UIFile[];
-  validationIssues: Array<{
-    filename: string;
-    componentName: string;
-    issues: Array<{ type: string; message: string; line?: number; context?: string }>;
-  }>;
+  validationIssues: FileValidationIssues[];
 }> {
   const files: UIFile[] = []
-  const validationIssues: Array<{
-    filename: string;
-    componentName: string;
-    issues: Array<{ type: string; message: string; line?: number; context?: string }>;
-  }> = []
+  const allValidationIssues: FileValidationIssues[] = []
   
-  // Analyze what components we need based on the UI plan
+  // Send parent node progress
+  onProgress?.('UIGenerationNode', 'in-progress', 'Generating UI components...', true)
+  
+  // Analyze components needed
   const componentsToGenerate = analyzeComponentsNeeded(uiPlan)
   
-  // If no components were identified, use sensible defaults based on the layout
-  if (componentsToGenerate.length === 0) {
-    console.log('No specific components found in UI plan, using defaults based on layout')
-    
-    // Analyze the layout description to determine defaults
-    const layoutLower = (uiPlan.layout || '').toLowerCase()
-    
-    if (layoutLower.includes('dashboard')) {
-      componentsToGenerate.push(
-        { name: 'Header', type: 'navigation' },
-        { name: 'Sidebar', type: 'sidebar' },
-        { name: 'Dashboard', type: 'datadisplay' }
-      )
-    } else if (layoutLower.includes('single page')) {
-      componentsToGenerate.push(
-        { name: 'Navigation', type: 'navigation' },
-        { name: 'Hero', type: 'generic' },
-        { name: 'Features', type: 'generic' },
-        { name: 'Footer', type: 'footer' }
-      )
-    } else {
-      // Generic default
-      componentsToGenerate.push(
-        { name: 'Header', type: 'navigation' },
-        { name: 'MainContent', type: 'generic' }
-      )
-    }
-  }
+  // Track route references across components
+  const allRouteReferences = new Set<string>()
   
-  const componentNames = componentsToGenerate.map(c => c.name)
+  // Generate non-auth components
+  const nonAuthComponents = componentsToGenerate.filter(comp => !isAuthRelatedComponent(comp.name))
   
-      // Generate each component file with validation and retry
-    for (const component of componentsToGenerate) {
-      console.log(`Generating ${component.name} component (type: ${component.type})...`)
-      
-      let retryCount = 0
-      const maxRetries = 3
-      let content = ''
-      let isValid = false
-      let lastValidation: any = null
-      
-      while (!isValid && retryCount < maxRetries) {
-        if (retryCount > 0) {
-          console.log(`Retrying ${component.name} generation (attempt ${retryCount + 1}/${maxRetries})...`)
-        }
-        
-        content = await generateComponentFile(
-          component.name,
-          component.type,
+  // Generate components with retry logic
+  for (const comp of nonAuthComponents) {
+    let attempts = 0
+    const maxAttempts = 2
+    let componentGenerated = false
+    
+    // Send progress for this specific component
+    onProgress?.(comp.name, 'in-progress', `Generating ${comp.name}...`, false, 'UIGenerationNode')
+    
+    while (attempts < maxAttempts && !componentGenerated) {
+      try {
+        console.log(`Generating component: ${comp.name} (attempt ${attempts + 1})`)
+        const componentCode = await generateComponentFile(
+          comp.name,
+          comp.type,
           { 
             title: projectIdea.title, 
             description: projectIdea.description,
-            otherComponents: componentNames.filter(n => n !== component.name),
+            otherComponents: componentsToGenerate.filter(c => c.name !== comp.name).map(c => c.name),
             layout: uiPlan.layout,
             interactions: uiPlan.user_interactions
           },
-          retryCount
+          attempts
         )
         
-        // Clean auth artifacts from the generated content
-        content = cleanAuthArtifacts(content, component.name)
+        // Clean auth artifacts if any slipped through
+        const cleanedCode = cleanAuthArtifacts(componentCode, comp.name)
         
         // Validate the generated code
-        lastValidation = validateGeneratedCode(content, component.name)
-        isValid = lastValidation.valid
-        
-        // Filter out auth validation issues if the component itself isn't auth-related
-        if (!isValid && lastValidation.issues) {
-          lastValidation.issues = lastValidation.issues.filter((issue: { type: string; message: string; line?: number; context?: string }) => {
-            // Keep non-auth issues
-            if (issue.type !== 'authentication') return true
-            // For auth issues, only keep them if it's a major problem
-            return false
+        const validation = validateGeneratedCode(cleanedCode, comp.name)
+        if (!validation.valid && validation.issues.length > 0) {
+          console.warn(`Validation issues for ${comp.name}:`, validation.issues)
+          allValidationIssues.push({
+            filename: `${comp.name}.tsx`,
+            componentName: comp.name,
+            issues: validation.issues
           })
-          // Re-evaluate validity after filtering
-          isValid = lastValidation.issues.length === 0
         }
         
-        if (!isValid) {
-          console.warn(`Validation failed for ${component.name}:`, lastValidation.issues)
-          if (onProgress && retryCount < maxRetries - 1) {
-            onProgress(`UI-${component.name}`, 'error', `Validation failed, retrying...`)
-          }
-          retryCount++
-          
-          // Add a small delay before retrying to avoid rate limits
-          if (retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 1000))
-          }
-        } else {
-          console.log(`${component.name} generated successfully`)
-          if (onProgress) {
-            onProgress(`UI-${component.name}`, 'success', `Component validated`)
-          }
+        // Extract route references
+        const routeRefs = extractRouteReferences(cleanedCode)
+        routeRefs.forEach(route => allRouteReferences.add(route))
+        
+        files.push({
+          filename: `${comp.name}.tsx`,
+          content: cleanedCode,
+          type: comp.type as UIFile['type']
+        })
+        
+        componentGenerated = true
+        
+        // Mark component as complete
+        onProgress?.(comp.name, 'success', undefined, false, 'UIGenerationNode')
+      } catch (error) {
+        console.error(`Error generating ${comp.name}:`, error)
+        attempts++
+        if (attempts >= maxAttempts) {
+          onProgress?.(comp.name, 'error', `Failed to generate`, false, 'UIGenerationNode')
+          throw new Error(`Failed to generate ${comp.name} after ${maxAttempts} attempts`)
         }
       }
-      
-      if (!isValid && lastValidation) {
-        console.error(`Failed to generate valid code for ${component.name} after ${maxRetries} attempts`)
-        // Track validation issues for this component
-        validationIssues.push({
-          filename: `${component.name}.tsx`,
-          componentName: component.name,
-          issues: lastValidation.issues
+    }
+  }
+  
+  // Generate route/page components if needed
+  if (allRouteReferences.size > 0) {
+    console.log('Generating pages for routes:', Array.from(allRouteReferences))
+    for (const route of allRouteReferences) {
+      try {
+        // Skip invalid routes
+        if (route.includes('${') || route.includes('/') || !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(route)) {
+          console.warn(`Skipping invalid route: ${route}`)
+          continue
+        }
+        
+        const pageName = `${route.charAt(0).toUpperCase() + route.slice(1)}Page`
+        onProgress?.(pageName, 'in-progress', `Generating ${pageName}...`, false, 'UIGenerationNode')
+        
+        const pageComponent = await generatePageComponent(route, {
+          title: projectIdea.title,
+          description: projectIdea.description,
+          existingComponents: files.map(f => f.filename.replace('.tsx', ''))
         })
-      }
       
-      files.push({
-        filename: `${component.name}.tsx`,
-        type: 'component',
-        content: content.trim()
-      })
+        files.push({
+          filename: pageComponent.name + '.tsx',
+          content: pageComponent.content,
+          type: 'page'
+        })
+        
+        onProgress?.(pageName, 'success', undefined, false, 'UIGenerationNode')
+      } catch (error) {
+        console.error(`Error generating page for route ${route}:`, error)
+        onProgress?.(route, 'error', `Failed to generate page`, false, 'UIGenerationNode')
+        // Continue with other pages instead of failing the entire generation
+      }
     }
+  }
   
-  // Generate App.tsx last with validation and retry
-  console.log('Generating App component...')
+  // Generate the main App.tsx file
+  onProgress?.('App', 'in-progress', 'Generating App.tsx...', false, 'UIGenerationNode')
+  console.log('Generating App.tsx...')
   
-  let appRetryCount = 0
-  const appMaxRetries = 3
-  let appContent = ''
-  let appIsValid = false
+  // Generate App component using the existing component files
+  const componentFiles = files.filter(f => 
+    f.type === 'component' || 
+    (f.filename.includes('Header') || f.filename.includes('Navigation') || f.filename.includes('Sidebar'))
+  )
   
-  while (!appIsValid && appRetryCount < appMaxRetries) {
-    if (appRetryCount > 0) {
-      console.log(`Retrying App generation (attempt ${appRetryCount + 1}/${appMaxRetries})...`)
-    }
-    
-    appContent = await generateComponentFile(
+  const appContent = await generateComponentFile(
       'App',
       'container',
       { 
         title: projectIdea.title, 
         description: projectIdea.description,
-        otherComponents: componentNames,
+      otherComponents: componentFiles.map(f => f.filename.replace('.tsx', '')),
         layout: uiPlan.layout,
         interactions: uiPlan.user_interactions
       },
-      appRetryCount
-    )
-    
-    // Clean auth artifacts from App component too
-    appContent = cleanAuthArtifacts(appContent, 'App')
-    
-    // Validate the App component
-    const appValidation = validateGeneratedCode(appContent, 'App')
-    appIsValid = appValidation.valid
-    
-    // Filter out auth validation issues for App component
-    if (!appIsValid && appValidation.issues) {
-      const filteredIssues = appValidation.issues.filter(issue => issue.type !== 'authentication')
-      appIsValid = filteredIssues.length === 0
-    }
-    
-    if (!appIsValid) {
-      console.warn('Validation failed for App component:', appValidation.issues)
-      if (onProgress && appRetryCount < appMaxRetries - 1) {
-        onProgress('UI-App', 'error', 'Validation failed, retrying...')
-      }
-      appRetryCount++
-      
-      // Add a small delay before retrying to avoid rate limits
-      if (appRetryCount < appMaxRetries) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      }
-    } else {
-      console.log('App component generated successfully')
-      if (onProgress) {
-        onProgress('UI-App', 'success', 'App component validated')
-      }
-    }
+    0
+  )
+  
+  // Update App with routing if needed
+  const finalAppContent = allRouteReferences.size > 0 
+    ? updateAppWithRouting(appContent, Array.from(allRouteReferences))
+    : appContent
+  
+  // Validate App component
+  const appValidation = validateGeneratedCode(finalAppContent, 'App')
+  if (!appValidation.valid && appValidation.issues.length > 0) {
+    console.warn('App.tsx validation issues:', appValidation.issues)
+    allValidationIssues.push({
+      filename: 'App.tsx',
+      componentName: 'App',
+      issues: appValidation.issues
+    })
   }
-  
-  if (!appIsValid) {
-    console.error(`Failed to generate valid App component after ${appMaxRetries} attempts`)
-  }
-  
-  // Extra validation for App component
-  if (!appContent.includes('const App') && !appContent.includes('function App')) {
-    console.error('App component not properly named! Content:', appContent.substring(0, 200))
-    // Try to fix by finding the main component and renaming it
-    const componentMatch = appContent.match(/(?:const|function)\s+(\w+)\s*[=(]/)
-    if (componentMatch && componentMatch[1] !== 'App') {
-      console.log(`Renaming ${componentMatch[1]} to App`)
-      appContent = appContent.replace(
-        new RegExp(`\\b${componentMatch[1]}\\b`, 'g'),
-        'App'
-      )
-    }
-  }
-  
-  // Verify the App content one more time
-  if (!appContent.includes('window.App')) {
-    console.error('App component missing window.App assignment! Adding it...')
-    appContent = appContent.trim() + '\n\nwindow.App = App;'
-  }
-  
-  // Fix component references to use window - more aggressive
-  componentNames.forEach(name => {
-    // Pattern 1: React.createElement(ComponentName
-    const pattern1 = new RegExp(`React\\.createElement\\(${name}(?=[,\\)])`, 'g')
-    if (appContent.match(pattern1)) {
-      console.log(`Fixing reference to ${name} to use window.${name}`)
-      appContent = appContent.replace(pattern1, `React.createElement(window.${name}`)
-    }
-    
-    // Pattern 2: React.createElement( ComponentName (with space)
-    const pattern2 = new RegExp(`React\\.createElement\\(\\s*${name}(?=[,\\)])`, 'g')
-    if (appContent.match(pattern2)) {
-      console.log(`Fixing spaced reference to ${name} to use window.${name}`)
-      appContent = appContent.replace(pattern2, `React.createElement(window.${name}`)
-    }
-    
-    // Pattern 3: Just in case - any remaining bare component references
-    const pattern3 = new RegExp(`(React\\.createElement\\([^)]*?)\\b${name}\\b`, 'g')
-    appContent = appContent.replace(pattern3, `$1window.${name}`)
-  })
-  
-  // Double check
-  componentNames.forEach(name => {
-    if (appContent.includes(`React.createElement(${name}`) && !appContent.includes(`React.createElement(window.${name}`)) {
-      console.error(`App still has bare reference to ${name}!`)
-    }
-  })
-  
-  // Log what we're actually storing
-  console.log('App component preview:', appContent.substring(0, 300))
-  console.log('App contains window.App?', appContent.includes('window.App'))
-  console.log('App contains React.createElement(window.Header)?', appContent.includes('React.createElement(window.Header)'))
   
   files.push({
     filename: 'App.tsx',
-    type: 'main',
-    content: appContent.trim()
+    content: finalAppContent,
+    type: 'main'
   })
   
-  // Step 2: Analyze all generated components for route references
-  console.log('Analyzing components for route references...')
-  const allRoutes = new Set<string>()
+  onProgress?.('App', 'success', undefined, false, 'UIGenerationNode')
   
-  // Check all component files for route references
-  files.forEach(file => {
-    const routes = extractRouteReferences(file.content)
-    routes.forEach(route => allRoutes.add(route))
-  })
+  console.log('UI files generation complete:', files.length, 'files')
+  console.log('Validation issues:', allValidationIssues.length, 'files with issues')
   
-  console.log('Found route references:', Array.from(allRoutes))
+  // Update parent node status
+  onProgress?.('UIGenerationNode', 'success', `Generated ${files.length} files`)
   
-  // Step 3: Generate page components for each referenced route
-  if (allRoutes.size > 0) {
-    console.log('Generating page components for referenced routes...')
-    const existingComponentNames = files.map(f => f.filename.replace('.tsx', ''))
-    
-    for (const route of allRoutes) {
-      try {
-        console.log(`Generating page component for route: ${route}`)
-        if (onProgress) {
-          onProgress(`UI-${route}Page`, 'in-progress', `Generating ${route} page...`)
-        }
-        
-        const pageComponent = await generatePageComponent(route, {
-          title: projectIdea.title,
-          description: projectIdea.description,
-          existingComponents: existingComponentNames
-        })
-        
-        files.push({
-          filename: `${pageComponent.name}.tsx`,
-          type: 'page',
-          content: pageComponent.content.trim()
-        })
-        
-        console.log(`${pageComponent.name} generated successfully`)
-        if (onProgress) {
-          onProgress(`UI-${route}Page`, 'success', `${route} page created`)
-        }
-      } catch (error) {
-        console.error(`Failed to generate page component for route ${route}:`, error)
-        if (onProgress) {
-          onProgress(`UI-${route}Page`, 'error', `Failed to generate ${route} page`)
-        }
-      }
-    }
-    
-    // Step 4: Update App component to include routing logic for new pages
-    console.log('Updating App component with routing logic...')
-    const appFile = files.find(f => f.filename === 'App.tsx')
-    if (appFile) {
-      appFile.content = updateAppWithRouting(appFile.content, Array.from(allRoutes))
-    }
-  }
-  
-  return {
-    files,
-    validationIssues
-  }
+  return { files, validationIssues: allValidationIssues }
 }
 
 // Update App component to handle routing to generated pages

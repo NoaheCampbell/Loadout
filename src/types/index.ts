@@ -43,6 +43,9 @@ export interface GenerationProgress {
   node: string;
   status: NodeStatus;
   message?: string;
+  isParent?: boolean;
+  parentNode?: string;
+  isExpanded?: boolean;
 }
 
 export type UIStrategy = 'v0' | 'gpt';

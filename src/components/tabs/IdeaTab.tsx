@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, Send, MessageCircle, ArrowRight } from 'lucide-react'
+import { Sparkles, Loader2, Send, MessageCircle, ArrowRight, ArrowDown } from 'lucide-react'
 import { useStore } from '../../store'
 import { ipc } from '../../lib/ipc'
 import { IPC_CHANNELS } from '../../../electron/lib/ipc-channels'
@@ -32,18 +32,38 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
   const [chatInput, setChatInput] = useState('')
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+  const [isUserScrolling, setIsUserScrolling] = useState(false)
 
   // Update idea and chat history when project changes
   useEffect(() => {
     setIdea(currentProjectData?.idea || '')
     setChatMessages(currentProjectData?.chatHistory || [])
-    setIsInChat(false)
+    setIsInChat(Boolean(currentProjectData?.chatHistory && currentProjectData.chatHistory.length > 0))
   }, [currentProjectData])
 
-  // Auto-scroll chat to bottom
+  // Smart auto-scroll that respects user scrolling
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
+    if (!isUserScrolling && chatContainerRef.current) {
+      // Only scroll if user hasn't manually scrolled up
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [chatMessages, isUserScrolling])
+
+  // Check if user is at the bottom of the chat
+  const checkIfAtBottom = () => {
+    if (!chatContainerRef.current) return true
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current
+    // Consider "at bottom" if within 50px of the bottom
+    return scrollHeight - scrollTop - clientHeight < 50
+  }
+
+  // Handle scroll events to detect if user is scrolling
+  const handleScroll = () => {
+    if (!chatContainerRef.current) return
+    const atBottom = checkIfAtBottom()
+    setIsUserScrolling(!atBottom)
+  }
 
   const handleStartChat = async () => {
     if (!idea.trim()) {
@@ -62,6 +82,9 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
     }
     setChatMessages([userMessage])
     setIsWaitingForResponse(true)
+    
+    // Reset scrolling state when starting a new chat
+    setIsUserScrolling(false)
 
     try {
       // Create a new message that we'll update as chunks arrive
@@ -125,6 +148,9 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
     const messageContent = chatInput
     setChatInput('')
     setIsWaitingForResponse(true)
+    
+    // Scroll to bottom when user sends a message
+    setIsUserScrolling(false)
 
     try {
       // Create a new message that we'll update as chunks arrive
@@ -244,36 +270,38 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
   // If not in chat mode, show the initial idea input
   if (!isInChat) {
     return (
-      <div className="max-w-4xl mx-auto p-8">
-        <div className="space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">
-              {isNewProject ? "What React app do you want to build?" : "React App Idea"}
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Describe your React application in a few sentences. Our AI will help you refine it before generating the complete React component structure.
-            </p>
-          </div>
+      <div className="h-full overflow-y-auto">
+        <div className="max-w-4xl mx-auto p-8">
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">
+                {isNewProject ? "What React app do you want to build?" : "React App Idea"}
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400">
+                Describe your React application in a few sentences. Our AI will help you refine it before generating the complete React component structure.
+              </p>
+            </div>
 
-          <div>
-            <textarea
-              value={idea}
-              onChange={(e) => setIdea(e.target.value)}
-              placeholder="I want to build a React app that..."
-              className="w-full h-64 p-4 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-              disabled={isGenerating}
-            />
-          </div>
+            <div>
+              <textarea
+                value={idea}
+                onChange={(e) => setIdea(e.target.value)}
+                placeholder="I want to build a React app that..."
+                className="w-full h-64 p-4 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                disabled={isGenerating}
+              />
+            </div>
 
-          <div className="flex justify-end">
-            <button
-              onClick={handleStartChat}
-              disabled={!idea.trim()}
-              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:cursor-not-allowed"
-            >
-              <MessageCircle className="w-5 h-5" />
-              Refine Idea with AI
-            </button>
+            <div className="flex justify-end">
+              <button
+                onClick={handleStartChat}
+                disabled={!idea.trim()}
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg font-medium shadow-lg hover:shadow-xl transition-all duration-200 disabled:cursor-not-allowed"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Refine Idea with AI
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -282,9 +310,9 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
 
   // Chat interface
   return (
-    <div className="flex flex-col h-full">
+    <div className="h-full flex flex-col">
       {/* Chat header */}
-      <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+      <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold">Refining Your Project Idea</h2>
@@ -292,98 +320,100 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
               Chat with AI to clarify and expand your project concept
             </p>
           </div>
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating || chatMessages.length < 2}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 disabled:cursor-not-allowed"
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                Generate Project
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
         </div>
       </div>
 
       {/* Chat messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {chatMessages.map((message) => (
-          <div
-            key={message.id}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
+      <div 
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-scroll p-6"
+        onScroll={handleScroll}
+      >
+        <div className="space-y-4">
+          {chatMessages.map((message) => (
             <div
-              className={`max-w-2xl p-4 rounded-lg ${
-                message.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-              }`}
+              key={message.id}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              {message.role === 'user' ? (
-                <p className="whitespace-pre-wrap">{message.content}</p>
-              ) : (
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  <ReactMarkdown
-                    components={{
-                      // Custom component styling
-                      h1: ({ children }) => <h1 className="text-xl font-bold mb-2">{children}</h1>,
-                      h2: ({ children }) => <h2 className="text-lg font-semibold mb-2">{children}</h2>,
-                      h3: ({ children }) => <h3 className="text-base font-semibold mb-1">{children}</h3>,
-                      ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
-                      ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
-                      li: ({ children }) => <li className="mb-1">{children}</li>,
-                      p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                      code: ({ children, className, ...props }: any) => {
-                        const inline = !className || !className.includes('language-')
-                        return inline ? (
-                          <code className="bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-sm" {...props}>
+              <div
+                className={`max-w-2xl p-4 rounded-lg ${
+                  message.role === 'user'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                }`}
+              >
+                {message.role === 'user' ? (
+                  <p className="whitespace-pre-wrap">{message.content}</p>
+                ) : (
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    <ReactMarkdown
+                      components={{
+                        // Custom component styling
+                        h1: ({ children }) => <h1 className="text-xl font-bold mb-2">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-lg font-semibold mb-2">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-base font-semibold mb-1">{children}</h3>,
+                        ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
+                        li: ({ children }) => <li className="mb-1">{children}</li>,
+                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                        code: ({ children, className, ...props }: any) => {
+                          const inline = !className || !className.includes('language-')
+                          return inline ? (
+                            <code className="bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-sm" {...props}>
+                              {children}
+                            </code>
+                          ) : (
+                            <code className="block bg-gray-200 dark:bg-gray-700 p-2 rounded text-sm overflow-x-auto" {...props}>
+                              {children}
+                            </code>
+                          )
+                        },
+                        blockquote: ({ children }) => (
+                          <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic my-2">
                             {children}
-                          </code>
-                        ) : (
-                          <code className="block bg-gray-200 dark:bg-gray-700 p-2 rounded text-sm overflow-x-auto" {...props}>
+                          </blockquote>
+                        ),
+                        a: ({ children, href }) => (
+                          <a href={href} className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">
                             {children}
-                          </code>
-                        )
-                      },
-                      blockquote: ({ children }) => (
-                        <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic my-2">
-                          {children}
-                        </blockquote>
-                      ),
-                      a: ({ children, href }) => (
-                        <a href={href} className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">
-                          {children}
-                        </a>
-                      ),
-                    }}
-                  >
-                    {message.content}
-                  </ReactMarkdown>
-                  {/* Show typing indicator if this is the last message and we're waiting for response */}
-                  {isWaitingForResponse && chatMessages[chatMessages.length - 1]?.id === message.id && (
-                    <span className="inline-block w-2 h-4 bg-gray-400 dark:bg-gray-500 animate-pulse ml-1" />
-                  )}
-                </div>
-              )}
+                          </a>
+                        ),
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                    {/* Show typing indicator if this is the last message and we're waiting for response */}
+                    {isWaitingForResponse && chatMessages[chatMessages.length - 1]?.id === message.id && (
+                      <span className="inline-block w-2 h-4 bg-gray-400 dark:bg-gray-500 animate-pulse ml-1" />
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+          
+          {/* Removed separate loading indicator since we now show streaming content */}
+          
+          <div ref={chatEndRef} />
+        </div>
         
-        {/* Removed separate loading indicator since we now show streaming content */}
-        
-        <div ref={chatEndRef} />
+        {/* New messages indicator */}
+        {isUserScrolling && isWaitingForResponse && (
+          <button
+            onClick={() => {
+              setIsUserScrolling(false)
+              chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+            }}
+            className="fixed bottom-24 right-8 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 transition-all duration-200 z-10"
+          >
+            <ArrowDown className="w-4 h-4" />
+            New messages
+          </button>
+        )}
       </div>
 
-      {/* Chat input */}
-      <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+      {/* Chat input and Generate button */}
+      <div className="border-t border-gray-200 dark:border-gray-700 p-4 flex-shrink-0">
         <div className="flex gap-2">
           <input
             type="text"
@@ -401,32 +431,25 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
           >
             <Send className="w-5 h-5" />
           </button>
+          <button
+            onClick={handleGenerate}
+            disabled={isGenerating || chatMessages.length < 2}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 disabled:cursor-not-allowed"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Generate
+              </>
+            )}
+          </button>
         </div>
       </div>
-
-      {/* Progress Display */}
-      {isGenerating && (
-        <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
-          <h3 className="font-semibold mb-2">Generation Progress</h3>
-          <div className="space-y-2 max-h-32 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600">
-            {generationProgress.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">Starting generation...</p>
-            ) : (
-              generationProgress.map((progress, index) => (
-                <div key={`${progress.node}-${index}`} className="flex items-center gap-2 text-sm py-1">
-                  {progress.status === 'in-progress' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
-                  {progress.status === 'success' && <span className="text-green-600">✓</span>}
-                  {progress.status === 'error' && <span className="text-red-600">✗</span>}
-                  <span className={progress.status === 'success' ? 'text-gray-600 dark:text-gray-400' : ''}>
-                    {progress.node}
-                  </span>
-                  {progress.message && <span className="text-gray-500 dark:text-gray-400">- {progress.message}</span>}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 } 

@@ -227,7 +227,7 @@ export default function UiTab() {
   
   if (!currentProjectData) {
     return (
-      <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+      <div className="h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
         <p>Create or select a project to see the UI preview</p>
       </div>
     )
@@ -610,7 +610,7 @@ Generated on: ${new Date().toLocaleString()}
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-auto">
+    <div className="h-full overflow-y-auto">
       {currentProjectData.uiStrategy === 'v0' ? (
         // v0 Strategy - Show prompt
         <div className="p-6 space-y-4">
@@ -636,9 +636,9 @@ Generated on: ${new Date().toLocaleString()}
         </div>
       ) : (
         // GPT Strategy - Show code and preview
-        <>
+        <div className="h-full flex flex-col">
           {/* Toggle Buttons */}
-          <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-3">
+          <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-3 flex-shrink-0">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setUiViewMode('preview')}
@@ -703,9 +703,9 @@ Generated on: ${new Date().toLocaleString()}
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-hidden">
             {uiViewMode === 'preview' ? (
-              <div>
+              <div className="h-full overflow-y-auto">
                 {hasCodeIssues || showRawCode ? (
                   <div className="p-6 space-y-4">
                     <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
@@ -902,30 +902,30 @@ Generated on: ${new Date().toLocaleString()}
               </div>
             )}
           </div>
-        </>
-      )}
-      
-      {/* Progress Display during regeneration */}
-      {isGenerating && (
-        <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
-          <h3 className="font-semibold mb-2">Regeneration Progress</h3>
-          <div className="space-y-2 max-h-32 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600">
-            {generationProgress.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">Starting regeneration...</p>
-            ) : (
-              generationProgress.map((progress, index) => (
-                <div key={`${progress.node}-${index}`} className="flex items-center gap-2 text-sm py-1">
-                  {progress.status === 'in-progress' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
-                  {progress.status === 'success' && <span className="text-green-600">✓</span>}
-                  {progress.status === 'error' && <span className="text-red-600">✗</span>}
-                  <span className={progress.status === 'success' ? 'text-gray-600 dark:text-gray-400' : ''}>
-                    {progress.node}
-                  </span>
-                  {progress.message && <span className="text-gray-500 dark:text-gray-400">- {progress.message}</span>}
-                </div>
-              ))
-            )}
-          </div>
+          
+          {/* Progress Display during regeneration */}
+          {isGenerating && (
+            <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900 flex-shrink-0">
+              <h3 className="font-semibold mb-2">Regeneration Progress</h3>
+              <div className="space-y-2 max-h-32 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600">
+                {generationProgress.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Starting regeneration...</p>
+                ) : (
+                  generationProgress.map((progress, index) => (
+                    <div key={`${progress.node}-${index}`} className="flex items-center gap-2 text-sm py-1">
+                      {progress.status === 'in-progress' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                      {progress.status === 'success' && <span className="text-green-600">✓</span>}
+                      {progress.status === 'error' && <span className="text-red-600">✗</span>}
+                      <span className={progress.status === 'success' ? 'text-gray-600 dark:text-gray-400' : ''}>
+                        {progress.node}
+                      </span>
+                      {progress.message && <span className="text-gray-500 dark:text-gray-400">- {progress.message}</span>}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

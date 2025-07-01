@@ -45,7 +45,7 @@ export default function Workspace() {
   // Show new project form if no project selected
   if (!selectedProjectId) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex flex-col h-full overflow-hidden">
         <IdeaTab isNewProject />
       </div>
     )
@@ -56,9 +56,9 @@ export default function Workspace() {
   const projectTitle = currentProject ? cleanProjectTitle(currentProject.title) : 'Loading...'
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col h-full">
       {/* Project Header */}
-      <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+      <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex-shrink-0">
         <div className="px-6 py-4">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
             {projectTitle}
@@ -103,7 +103,7 @@ export default function Workspace() {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
+      <div className="flex-1 overflow-hidden bg-gray-50 dark:bg-gray-900 min-h-0">
         {currentTab === 'idea' && <IdeaTab />}
         {currentTab === 'prd' && <PrdTab />}
         {currentTab === 'checklist' && <ChecklistTab />}

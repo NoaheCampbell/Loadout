@@ -65,15 +65,44 @@ export class StorageManager {
       const uiPath = path.join(projectPath, 'ui');
       await fs.mkdir(uiPath, { recursive: true });
       
+      const savedFiles: Array<{ filename: string; type: string }> = [];
+      
       for (const file of files.uiFiles) {
-        await fs.writeFile(path.join(uiPath, file.filename), file.content);
+        try {
+          // Sanitize filename to prevent invalid paths
+          let safeFilename = file.filename
+            .replace(/\$\{[^}]+\}/g, '') // Remove template literals
+            .replace(/[<>:"|?*]/g, '') // Remove invalid characters
+            .replace(/\//g, '_') // Replace forward slashes with underscores
+            .trim();
+          
+          // Ensure filename is not empty and has .tsx extension
+          if (!safeFilename || safeFilename === '.tsx') {
+            console.warn(`Skipping invalid filename: ${file.filename}`);
+            continue;
+          }
+          
+          // Ensure .tsx extension
+          if (!safeFilename.endsWith('.tsx')) {
+            safeFilename = safeFilename.replace(/\.[^.]+$/, '') + '.tsx';
+          }
+          
+          console.log(`Saving UI file: ${safeFilename} (original: ${file.filename})`);
+          await fs.writeFile(path.join(uiPath, safeFilename), file.content);
+          savedFiles.push({ filename: safeFilename, type: file.type });
+        } catch (error) {
+          console.error(`Failed to save UI file ${file.filename}:`, error);
+          // Continue with other files instead of failing completely
+        }
       }
       
-      // Save UI files metadata
-      await fs.writeFile(
-        path.join(uiPath, 'files.json'), 
-        JSON.stringify(files.uiFiles.map(f => ({ filename: f.filename, type: f.type })), null, 2)
-      );
+      // Save UI files metadata with sanitized filenames
+      if (savedFiles.length > 0) {
+        await fs.writeFile(
+          path.join(uiPath, 'files.json'), 
+          JSON.stringify(savedFiles, null, 2)
+        );
+      }
     }
     if (files.v0Prompt) {
       await fs.writeFile(path.join(projectPath, 'v0_prompt.json'), JSON.stringify(files.v0Prompt, null, 2));

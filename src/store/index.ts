@@ -49,7 +49,30 @@ export const useStore = create<AppState>((set) => ({
     selectedProjectId: state.selectedProjectId === projectId ? null : state.selectedProjectId,
     currentProjectData: state.selectedProjectId === projectId ? null : state.currentProjectData,
   })),
-  setGenerating: (isGenerating) => set({ isGenerating }),
+  setGenerating: (isGenerating) => set((state) => {
+    if (isGenerating) {
+      // Initialize all main workflow nodes as pending when starting generation
+      const mainNodes = [
+        'IdeaInputNode',
+        'PRDGeneratorNode', 
+        'ChecklistGeneratorNode',
+        'BrainliftNode',
+        'UIPlannerNode',
+        'UIStrategyDecisionNode',
+        'UIGenerationNode',
+        'saveProject'
+      ]
+      
+      const initialProgress = mainNodes.map(node => ({
+        node,
+        status: 'pending' as const,
+        isParent: node === 'UIGenerationNode'
+      }))
+      
+      return { isGenerating, generationProgress: initialProgress }
+    }
+    return { isGenerating }
+  }),
   addProgress: (progress) => set((state) => {
     console.log('Progress update:', progress);
     
@@ -59,10 +82,26 @@ export const useStore = create<AppState>((set) => ({
     if (existingIndex >= 0) {
       // Update existing progress
       const updated = [...state.generationProgress];
-      updated[existingIndex] = progress;
+      updated[existingIndex] = { ...updated[existingIndex], ...progress };
       return { generationProgress: updated };
     } else {
       // Add new progress
+      // If this is a UI generation child node, make sure parent exists
+      if (progress.parentNode === 'UIGenerationNode' && !state.generationProgress.find(p => p.node === 'UIGenerationNode')) {
+        return {
+          generationProgress: [
+            ...state.generationProgress,
+            {
+              node: 'UIGenerationNode',
+              status: 'in-progress',
+              message: 'Generating UI components...',
+              isParent: true,
+              isExpanded: true
+            },
+            progress
+          ]
+        };
+      }
       return { generationProgress: [...state.generationProgress, progress] };
     }
   }),

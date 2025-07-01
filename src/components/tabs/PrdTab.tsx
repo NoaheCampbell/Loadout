@@ -20,7 +20,7 @@ export default function PrdTab() {
 
   if (!currentProjectData?.prd) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
+      <div className="h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
         <p>No PRD generated yet. Start by entering your project idea in the Idea tab.</p>
       </div>
     )
@@ -29,55 +29,57 @@ export default function PrdTab() {
   const { prd } = currentProjectData
 
   return (
-    <div className="max-w-4xl mx-auto p-8">
-      {/* Actions */}
-      <div className="flex justify-end gap-2 mb-6">
-        <button
-          onClick={handleRegenerate}
-          className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Regenerate
-        </button>
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        >
-          <Copy className="w-4 h-4" />
-          Copy
-        </button>
-      </div>
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-4xl mx-auto p-8">
+        {/* Actions */}
+        <div className="flex justify-end gap-2 mb-6">
+          <button
+            onClick={handleRegenerate}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Regenerate
+          </button>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            <Copy className="w-4 h-4" />
+            Copy
+          </button>
+        </div>
 
-      {/* PRD Content */}
-      <div className="prose prose-gray dark:prose-invert max-w-none">
-        <h1>Product Requirements Document</h1>
-        
-        <h2>Problem</h2>
-        <p>{prd.problem}</p>
+        {/* PRD Content */}
+        <div className="prose prose-gray dark:prose-invert max-w-none">
+          <h1>Product Requirements Document</h1>
+          
+          <h2>Problem</h2>
+          <p>{prd.problem}</p>
 
-        <h2>Goals</h2>
-        <ul>
-          {prd.goals.map((goal, index) => (
-            <li key={index}>{goal}</li>
-          ))}
-        </ul>
+          <h2>Goals</h2>
+          <ul>
+            {prd.goals.map((goal, index) => (
+              <li key={index}>{goal}</li>
+            ))}
+          </ul>
 
-        <h2>Scope</h2>
-        <p>{prd.scope}</p>
+          <h2>Scope</h2>
+          <p>{prd.scope}</p>
 
-        <h2>Constraints</h2>
-        <ul>
-          {prd.constraints.map((constraint, index) => (
-            <li key={index}>{constraint}</li>
-          ))}
-        </ul>
+          <h2>Constraints</h2>
+          <ul>
+            {prd.constraints.map((constraint, index) => (
+              <li key={index}>{constraint}</li>
+            ))}
+          </ul>
 
-        <h2>Success Criteria</h2>
-        <ul>
-          {prd.success_criteria.map((criteria, index) => (
-            <li key={index}>{criteria}</li>
-          ))}
-        </ul>
+          <h2>Success Criteria</h2>
+          <ul>
+            {prd.success_criteria.map((criteria, index) => (
+              <li key={index}>{criteria}</li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   )

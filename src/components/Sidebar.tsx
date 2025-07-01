@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { Plus, Folder, Loader2, Trash2 } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Plus, Folder, Loader2, Trash2, ChevronRight, ChevronDown, CheckCircle, AlertCircle, GripVertical } from 'lucide-react'
 import { useStore } from '../store'
 import { format } from 'date-fns'
 import { ipc } from '../lib/ipc'
 import toast from 'react-hot-toast'
+import { GenerationProgress } from '../types'
 
 // Helper function to clean markdown and format project titles
 function cleanProjectTitle(title: string): string {
@@ -32,10 +33,185 @@ function cleanProjectTitle(title: string): string {
   return cleanTitle
 }
 
+// Get a user-friendly node name
+function getNodeDisplayName(node: string): string {
+  const nodeNames: Record<string, string> = {
+    'IdeaInputNode': 'Processing Idea',
+    'PRDGeneratorNode': 'Generating PRD',
+    'ChecklistGeneratorNode': 'Creating Checklist',
+    'BrainliftNode': 'Documenting Decisions',
+    'UIPlannerNode': 'Planning UI',
+    'UIStrategyDecisionNode': 'Determining Strategy',
+    'UIGenerationNode': 'UI Generation',
+    'GPTUICodeNode': 'Generating Code',
+    'V0PromptNode': 'Creating v0 Prompt',
+    'saveProject': 'Saving Project'
+  }
+  
+  // If it's a known node, return the friendly name
+  if (nodeNames[node]) {
+    return nodeNames[node]
+  }
+  
+  // Otherwise, it's likely a component name - just return it as-is
+  // but maybe add .tsx or Page suffix handling
+  if (node.endsWith('Page')) {
+    return node // Keep "AboutPage", "SettingsPage" etc as-is
+  }
+  
+  // For component names, keep them as-is
+  return node
+}
+
 export default function Sidebar() {
-  const { projects, selectedProjectId, selectProject, setProjectData, setCurrentTab, deleteProject, setProjects } = useStore()
+  const { 
+    projects, 
+    selectedProjectId, 
+    selectProject, 
+    setProjectData, 
+    setCurrentTab, 
+    deleteProject, 
+    setProjects,
+    isGenerating,
+    generationProgress 
+  } = useStore()
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null)
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['UIGenerationNode']))
+  
+  // Resize states with localStorage persistence
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem('flowgenius-sidebar-width')
+    return saved ? parseInt(saved, 10) : 256
+  })
+  const [workflowHeight, setWorkflowHeight] = useState(() => {
+    const saved = localStorage.getItem('flowgenius-workflow-height')
+    return saved ? parseInt(saved, 10) : 256
+  })
+  const sidebarRef = useRef<HTMLDivElement>(null)
+  const isResizingSidebar = useRef(false)
+  const isResizingWorkflow = useRef(false)
+
+  // Save dimensions to localStorage when they change
+  useEffect(() => {
+    localStorage.setItem('flowgenius-sidebar-width', sidebarWidth.toString())
+  }, [sidebarWidth])
+
+  useEffect(() => {
+    localStorage.setItem('flowgenius-workflow-height', workflowHeight.toString())
+  }, [workflowHeight])
+
+  // Define the main workflow nodes that should always be visible
+  const mainWorkflowNodes = [
+    'IdeaInputNode',
+    'PRDGeneratorNode',
+    'ChecklistGeneratorNode',
+    'BrainliftNode',
+    'UIPlannerNode',
+    'UIStrategyDecisionNode',
+    'UIGenerationNode',
+    'saveProject'
+  ]
+
+  // Handle sidebar resize
+  const handleSidebarMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizingSidebar.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  // Handle workflow section resize
+  const handleWorkflowMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizingWorkflow.current = true
+    document.body.style.cursor = 'row-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingSidebar.current) {
+        const newWidth = Math.max(200, Math.min(400, e.clientX))
+        setSidebarWidth(newWidth)
+      } else if (isResizingWorkflow.current && sidebarRef.current) {
+        const sidebarRect = sidebarRef.current.getBoundingClientRect()
+        const relativeY = e.clientY - sidebarRect.top
+        // Subtract heights of new project button and workflow header (approximately 180px)
+        const maxHeight = sidebarRect.height - 300
+        const newHeight = Math.max(100, Math.min(maxHeight, relativeY - 180))
+        setWorkflowHeight(newHeight)
+      }
+    }
+
+    const handleMouseUp = () => {
+      isResizingSidebar.current = false
+      isResizingWorkflow.current = false
+      document.body.style.cursor = 'auto'
+      document.body.style.userSelect = 'auto'
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
+  const toggleNodeExpansion = (node: string) => {
+    setExpandedNodes(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(node)) {
+        newSet.delete(node)
+      } else {
+        newSet.add(node)
+      }
+      return newSet
+    })
+  }
+
+  const renderProgressNode = (progress: GenerationProgress, childNodes: GenerationProgress[] = []) => {
+    const isExpanded = expandedNodes.has(progress.node)
+    const hasChildren = childNodes.length > 0
+    
+    return (
+      <div key={progress.node}>
+        <div className="flex items-center gap-2 text-sm py-1.5 px-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+          {/* Fixed width container for expand/collapse button */}
+          <div className="w-5 flex items-center justify-center flex-shrink-0">
+            {hasChildren && (
+              <button
+                onClick={() => toggleNodeExpansion(progress.node)}
+                className="p-0.5 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+              >
+                {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              </button>
+            )}
+          </div>
+          
+          {/* Fixed width container for status icon */}
+          <div className="w-5 flex items-center justify-center flex-shrink-0">
+            {progress.status === 'in-progress' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+            {progress.status === 'success' && <CheckCircle className="w-4 h-4 text-green-600" />}
+            {progress.status === 'error' && <AlertCircle className="w-4 h-4 text-red-600" />}
+            {progress.status === 'pending' && <div className="w-4 h-4 rounded-full border-2 border-gray-300 dark:border-gray-600" />}
+          </div>
+          
+          <span className={`flex-1 ${progress.status === 'success' ? 'text-gray-600 dark:text-gray-400' : ''}`}>
+            {getNodeDisplayName(progress.node)}
+          </span>
+        </div>
+        
+        {hasChildren && isExpanded && (
+          <div className="ml-9 border-l border-gray-200 dark:border-gray-700 pl-2">
+            {childNodes.map(child => renderProgressNode(child))}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   const handleNewProject = () => {
     // Reset to show new project form
@@ -95,8 +271,22 @@ export default function Sidebar() {
     }
   }
 
+  // Get the status of a node from progress or default to pending
+  const getNodeProgress = (nodeName: string): GenerationProgress => {
+    const found = generationProgress.find(p => p.node === nodeName)
+    return found || { node: nodeName, status: 'pending' }
+  }
+
+  // Organize progress nodes hierarchically
+  const getChildNodes = (parentNode: string) => 
+    generationProgress.filter(p => p.parentNode === parentNode)
+
   return (
-    <aside className="w-64 border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col">
+    <aside 
+      ref={sidebarRef}
+      className="relative border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col"
+      style={{ width: `${sidebarWidth}px` }}
+    >
       {/* New Project Button */}
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <button
@@ -107,6 +297,42 @@ export default function Sidebar() {
           New Project
         </button>
       </div>
+
+      {/* Workflow Progress (when generating) */}
+      {isGenerating && (
+        <div className="border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div className="p-4 pb-2">
+            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              🦜️🔗 LangGraph Workflow
+            </h3>
+          </div>
+          <div 
+            className="overflow-y-auto px-4 pb-4"
+            style={{ height: `${workflowHeight}px` }}
+          >
+            <div className="space-y-1">
+              {mainWorkflowNodes.map(nodeName => {
+                const progress = getNodeProgress(nodeName)
+                const childNodes = getChildNodes(nodeName)
+                return renderProgressNode(progress, childNodes)
+              })}
+            </div>
+          </div>
+          
+          {/* Workflow resize handle */}
+          <div 
+            className="h-2 cursor-row-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-600 transition-colors relative group"
+            onMouseDown={handleWorkflowMouseDown}
+          >
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex gap-1">
+                <div className="w-8 h-0.5 bg-gray-400 dark:bg-gray-500 group-hover:bg-white rounded-full transition-colors" />
+                <div className="w-8 h-0.5 bg-gray-400 dark:bg-gray-500 group-hover:bg-white rounded-full transition-colors" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Project List */}
       <div className="flex-1 overflow-y-auto">
@@ -157,6 +383,17 @@ export default function Sidebar() {
               ))}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Sidebar resize handle */}
+      <div 
+        className="absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-400 dark:hover:bg-blue-600 transition-colors group"
+        onMouseDown={handleSidebarMouseDown}
+      >
+        <div className="absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 flex flex-col gap-1">
+          <div className="w-0.5 h-8 bg-gray-400 dark:bg-gray-500 group-hover:bg-white rounded-full transition-colors" />
+          <div className="w-0.5 h-8 bg-gray-400 dark:bg-gray-500 group-hover:bg-white rounded-full transition-colors" />
         </div>
       </div>
     </aside>
