@@ -1,21 +1,20 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.flowgenius.app",
-  "productName": "FlowGenius",
+  "appId": "com.loadout.app",
+  "productName": "Loadout",
   "asar": true,
   "directories": {
     "output": "release/${version}"
   },
   "files": [
-    "dist-electron",
-    "dist"
+    "dist",
+    "dist-electron"
   ],
   "mac": {
-    "artifactName": "${productName}_${version}.${ext}",
     "target": [
-      "dmg",
-      "zip"
-    ]
+      "dmg"
+    ],
+    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
   },
   "win": {
     "target": [
@@ -26,13 +25,19 @@
         ]
       }
     ],
-    "artifactName": "${productName}_${version}.${ext}"
+    "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
   },
   "nsis": {
     "oneClick": false,
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,
     "deleteAppDataOnUninstall": false
+  },
+  "linux": {
+    "target": [
+      "AppImage"
+    ],
+    "artifactName": "${productName}-Linux-${version}.${ext}"
   },
   "publish": {
     "provider": "generic",

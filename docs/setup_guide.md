@@ -1,154 +1,82 @@
-# FlowGenius Setup Guide
+# Loadout Setup Guide
 
-## ✅ Prerequisites Checklist
+This guide will help you set up the development environment for Loadout.
 
-### 1. Environment Variables
-Create a `.env.local` file in your project root:
-```
-OPENAI_API_KEY=sk-your-actual-api-key-here
-```
+## Prerequisites
 
-### 2. Install Required Dependencies
+1. **Node.js 18+** and npm
+2. **OpenAI API Key** with access to GPT-4
 
-Run the following command to install all necessary packages:
+## Setup Steps
+
+### 1. Clone the Repository
 
 ```bash
-npm install --save \
-  @langchain/langgraph \
-  @langchain/openai \
-  @langchain/core \
-  dotenv \
-  react-markdown \
-  remark-gfm \
-  @monaco-editor/react \
-  @codesandbox/sandpack-react \
-  @codesandbox/sandpack-themes \
-  react-hot-toast \
-  lucide-react \
-  clsx \
-  zustand \
-  date-fns \
-  nanoid
+git clone <repository-url>
+cd loadout
 ```
 
-### 3. Configure Electron Main Process for Environment Variables
+### 2. Install Dependencies
 
-Update `electron/main/index.ts` to load environment variables at the top:
-```typescript
-// Add at the very top of the file
-import { config } from 'dotenv';
-config({ path: '.env.local' });
-```
-
-### 4. TypeScript Configuration
-
-Create type definitions for our project at `src/types/index.ts`:
-```typescript
-export interface ProjectIdea {
-  title: string;
-  description: string;
-}
-
-export interface PRD {
-  problem: string;
-  goals: string[];
-  scope: string;
-  constraints: string[];
-  success_criteria: string[];
-}
-
-export interface ChecklistItem {
-  id: string;
-  text: string;
-  done: boolean;
-}
-
-export interface UIPlan {
-  components: string[];
-  layout: string;
-  user_interactions: string[];
-}
-
-export interface Project {
-  id: string;
-  title: string;
-  created: string;
-  status: 'pending' | 'in-progress' | 'complete' | 'error';
-  path: string;
-}
-
-export type NodeStatus = 'pending' | 'in-progress' | 'success' | 'error';
-
-export interface GenerationProgress {
-  node: string;
-  status: NodeStatus;
-  message?: string;
-}
-```
-
-### 5. Create Project Directory Structure
-
-Create the following directories:
 ```bash
-mkdir -p src/components
-mkdir -p src/hooks
-mkdir -p src/lib
-mkdir -p src/store
-mkdir -p electron/lib
+npm install
 ```
 
-### 6. Update Tailwind Configuration
+### 3. Configure Environment
 
-Ensure your `tailwind.config.js` includes all necessary paths:
-```javascript
-module.exports = {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
-  theme: {
-    extend: {},
-  },
-  plugins: [],
-}
+Create a `.env.local` file in the root directory:
+
+```bash
+OPENAI_API_KEY=sk-your-api-key-here
 ```
 
-### 7. IPC Type Safety
+### 4. Run the Application
 
-Create IPC channel definitions at `electron/lib/ipc-channels.ts`:
-```typescript
-export const IPC_CHANNELS = {
-  GENERATE_PROJECT: 'generate-project',
-  CANCEL_GENERATION: 'cancel-generation',
-  GENERATION_PROGRESS: 'generation-progress',
-  LOAD_PROJECT: 'load-project',
-  LIST_PROJECTS: 'list-projects',
-  EXPORT_PROJECT: 'export-project',
-} as const;
+```bash
+npm run dev
 ```
 
-## 🚀 Quick Verification
+The app will open automatically. If not, navigate to `http://localhost:5173`.
 
-After setup, verify everything works:
+## Verify Installation
 
-1. **Check dependencies**: `npm list @langchain/langgraph`
-2. **Check env**: Add this to `electron/main/index.ts` temporarily:
-   ```typescript
-   console.log('API Key loaded:', !!process.env.OPENAI_API_KEY);
-   ```
-3. **Run dev server**: `npm run dev`
+Run the verification script:
 
-## 📝 Notes
+```bash
+npm run verify
+```
 
-- The `.env.local` file should NOT be committed to git
-- Make sure your OpenAI API key has sufficient credits
-- We're using the main process for LangGraph to avoid browser limitations
-- All file I/O will happen in the main process via IPC
+This will check:
+- All dependencies are installed
+- Required directories exist
+- Environment variables are set
+- OpenAI API key is valid
+
+## Troubleshooting
+
+### Missing Dependencies
+If packages are missing, run:
+```bash
+npm install
+```
+
+### API Key Issues
+- Ensure your OpenAI API key starts with `sk-`
+- Verify it has GPT-4 access
+- Check for any spaces or quotes in the `.env.local` file
+
+### Build Issues
+Clean and rebuild:
+```bash
+rm -rf node_modules dist dist-electron
+npm install
+npm run dev
+```
 
 ## Next Steps
 
-Once setup is complete, we can start with:
-1. Basic IPC setup and testing
-2. Main UI layout implementation
-3. First LangGraph node (IdeaInputNode)
-4. Storage system setup 
+1. Create your first project by entering an idea
+2. Watch as Loadout generates a complete development plan
+3. Export your project files when ready
+
+Happy building! 🚀 

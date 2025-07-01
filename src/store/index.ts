@@ -10,7 +10,7 @@ interface AppState {
   // Generation state
   isGenerating: boolean;
   generationProgress: GenerationProgress[];
-  currentTab: 'idea' | 'prd' | 'checklist' | 'ui';
+  currentTab: 'idea' | 'prd' | 'checklist' | 'ui' | 'workflow';
   
   // UI state
   uiViewMode: 'preview' | 'code';

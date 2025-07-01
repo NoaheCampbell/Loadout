@@ -258,22 +258,61 @@ export class StorageManager {
   }
 
   private prdToMarkdown(prd: any): string {
-    return `# Product Requirements Document
+    console.log('Storage: Converting PRD to markdown:', JSON.stringify(prd, null, 2));
+    
+    // Handle empty or malformed PRD
+    if (!prd || typeof prd !== 'object') {
+      console.error('Storage: Invalid PRD data:', prd);
+      return '# Untitled Project\n\n## Project Description\n[No description provided]\n\n## Target Audience\n[No audience defined]\n\n## Desired Features\n[No features defined]\n\n## Design Requests\n[No design requests]\n\n## Other Notes\n[No additional notes]';
+    }
+    
+    // Check if problem already contains formatted markdown (new format)
+    const problemText = prd.problem || '';
+    let projectHeader = '';
+    let projectDescription = '';
+    
+    if (problemText.includes('# ') && problemText.includes('## Project Description')) {
+      // New format - problem already contains formatted markdown
+      projectHeader = problemText;
+    } else {
+      // Old format - extract project name from first line
+      const problemLines = problemText.split('\n').filter((line: string) => line.trim());
+      const projectName = problemLines[0] || 'Untitled Project';
+      projectDescription = problemLines.slice(1).join('\n').trim() || problemText || '[No description provided]';
+      projectHeader = `# ${projectName}\n\n## Project Description\n${projectDescription}`;
+    }
 
-## Problem
-${prd.problem}
+    // Ensure all fields are arrays or strings
+    const goals = Array.isArray(prd.goals) && prd.goals.length > 0 
+      ? prd.goals.join('\n\n') 
+      : '[No features defined]';
+    
+    const scope = prd.scope || '[No target audience defined]';
+    
+    const constraints = Array.isArray(prd.constraints) && prd.constraints.length > 0
+      ? prd.constraints.join('\n')
+      : '[No design requests]';
+    
+    const successCriteria = Array.isArray(prd.success_criteria) && prd.success_criteria.length > 0
+      ? prd.success_criteria.map((s: string) => `- ${s}`).join('\n')
+      : '- [No additional notes]';
 
-## Goals
-${prd.goals.map((g: string) => `- ${g}`).join('\n')}
+    const markdown = `${projectHeader}
 
-## Scope
-${prd.scope}
+## Target Audience
+${scope}
 
-## Constraints
-${prd.constraints.map((c: string) => `- ${c}`).join('\n')}
+## Desired Features
+${goals}
 
-## Success Criteria
-${prd.success_criteria.map((s: string) => `- ${s}`).join('\n')}`;
+## Design Requests
+${constraints}
+
+## Other Notes
+${successCriteria}`;
+
+    console.log('Storage: Generated markdown PRD:', markdown.substring(0, 200) + '...');
+    return markdown;
   }
 
   private checklistToMarkdown(checklist: any[]): string {
@@ -296,6 +335,8 @@ ${brainlift.contextLinks.map((l: string) => `- ${l}`).join('\n')}`;
   }
 
   private parsePrdFromMarkdown(content: string): any {
+    console.log('Storage: Parsing PRD from markdown, content length:', content.length);
+    
     // Parse the PRD from markdown
     const prd: any = {
       problem: '',
@@ -305,31 +346,59 @@ ${brainlift.contextLinks.map((l: string) => `- ${l}`).join('\n')}`;
       success_criteria: []
     };
 
+    // Extract the project header section (# Project Name + ## Project Description)
+    const projectHeaderMatch = content.match(/^#\s+.+\n+##\s+Project Description\n[\s\S]+?(?=\n##\s+Target Audience)/);
+    if (projectHeaderMatch) {
+      prd.problem = projectHeaderMatch[0].trim();
+    } else {
+      // Fallback for old format
+      const lines = content.split('\n');
+      const projectName = lines[0]?.replace(/^#\s*/, '').trim() || '';
+      const sections = content.split(/^##\s+/m);
+      
+      sections.forEach(section => {
+        const sectionLines = section.trim().split('\n');
+        const title = sectionLines[0]?.toLowerCase();
+        
+        if (title?.includes('project description')) {
+          const description = sectionLines.slice(1).join('\n').trim();
+          prd.problem = projectName ? `${projectName}\n${description}` : description;
+          return;
+        }
+      });
+    }
+    
+    // Parse remaining sections
     const sections = content.split(/^##\s+/m);
     
     sections.forEach(section => {
-      const lines = section.trim().split('\n');
-      const title = lines[0]?.toLowerCase();
+      const sectionLines = section.trim().split('\n');
+      const title = sectionLines[0]?.toLowerCase();
       
-      if (title?.includes('problem')) {
-        prd.problem = lines.slice(1).join('\n').trim();
-      } else if (title?.includes('goals')) {
-        prd.goals = lines.slice(1)
-          .filter(line => line.trim().startsWith('-'))
-          .map(line => line.trim().substring(1).trim());
-      } else if (title?.includes('scope')) {
-        prd.scope = lines.slice(1).join('\n').trim();
-      } else if (title?.includes('constraints')) {
-        prd.constraints = lines.slice(1)
-          .filter(line => line.trim().startsWith('-'))
-          .map(line => line.trim().substring(1).trim());
-      } else if (title?.includes('success criteria')) {
-        prd.success_criteria = lines.slice(1)
+      if (title?.includes('target audience')) {
+        prd.scope = sectionLines.slice(1).join('\n').trim();
+      } else if (title?.includes('desired features')) {
+        // Preserve the full content including headers and checkboxes
+        const featuresContent = sectionLines.slice(1).join('\n').trim();
+        // Split by feature category headers (###)
+        const features = featuresContent.split(/(?=^###\s)/m).filter(f => f.trim());
+        prd.goals = features.length > 0 ? features : [featuresContent];
+      } else if (title?.includes('design requests')) {
+        // Preserve the full content including checkboxes
+        const designContent = sectionLines.slice(1).join('\n').trim();
+        // Split by main checkbox items (- [ ])
+        const designs = designContent.split(/\n(?=- \[ \])/m)
+          .map(d => d.trim())
+          .filter(d => d && d.startsWith('- [ ]'));
+        prd.constraints = designs.length > 0 ? designs : [designContent];
+      } else if (title?.includes('other notes')) {
+        prd.success_criteria = sectionLines.slice(1)
           .filter(line => line.trim().startsWith('-'))
           .map(line => line.trim().substring(1).trim());
       }
     });
 
+    console.log('Storage: Parsed PRD:', JSON.stringify(prd, null, 2).substring(0, 200) + '...');
     return prd;
   }
 

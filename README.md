@@ -89,3 +89,113 @@ export default {
 
 - [C/C++ addons, Node.js modules - Pre-Bundling](https://github.com/electron-vite/vite-plugin-electron-renderer#dependency-pre-bundling)
 - [dependencies vs devDependencies](https://github.com/electron-vite/vite-plugin-electron-renderer#dependencies-vs-devdependencies)
+
+# Loadout
+
+🚀 Transform your raw project ideas into complete development blueprints using AI.
+
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
+![Platform](https://img.shields.io/badge/platform-macOS%20|%20Windows%20|%20Linux-lightgrey.svg)
+
+## ✨ What is Loadout?
+
+Loadout is a desktop application that uses LangGraph and OpenAI to transform your project ideas into comprehensive development blueprints. It generates:
+
+- 📋 **Product Requirements Documents (PRD)** - Structured project specifications
+- ✅ **Development Checklists** - Phase-based implementation roadmaps  
+- 🧠 **Technical Decisions** - Documented assumptions and architecture choices
+- 🎨 **UI Components** - Ready-to-use React/Tailwind code with live preview
+
+## 🎯 Key Features
+
+- **AI-Powered Workflow** - Orchestrated by LangGraph for consistent, high-quality outputs
+- **Real-time Progress** - Watch as your idea transforms through each generation phase
+- **Interactive Preview** - See your generated UI components come to life instantly
+- **Export Everything** - Download your complete project blueprint as organized files
+- **Local Storage** - All projects saved securely on your machine
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Node.js 18+ and npm
+- OpenAI API key with GPT-4 access
+
+### Installation
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd loadout
+
+# Install dependencies
+npm install
+
+# Create environment file
+echo "OPENAI_API_KEY=sk-your-api-key-here" > .env.local
+
+# Start the application
+npm run dev
+```
+
+## 📖 How It Works
+
+1. **Enter Your Idea** - Describe your project in plain English
+2. **Watch AI Work** - LangGraph orchestrates multiple AI agents to analyze and plan
+3. **Review & Refine** - Browse through generated PRD, checklist, and UI components
+4. **Export & Build** - Download everything and start coding with a clear blueprint
+
+## 🏗️ Architecture
+
+Loadout uses a sophisticated LangGraph workflow:
+
+```
+Idea → PRD → Checklist → UI Plan → Component Generation → Export
+```
+
+Each step is powered by specialized AI agents that build upon previous outputs, ensuring consistency and completeness.
+
+## 📁 Project Storage
+
+Your projects are stored locally at:
+- **macOS**: `~/Library/Application Support/Loadout/projects/`
+- **Windows**: `%APPDATA%/Loadout/projects/`
+- **Linux**: `~/.config/Loadout/projects/`
+
+## 🛠️ Development
+
+```bash
+# Run in development mode
+npm run dev
+
+# Build for production
+npm run build
+
+# Run tests
+npm test
+
+# Verify setup
+npm run verify
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+MIT License - see LICENSE file for details
+
+## 🙏 Acknowledgments
+
+Built with:
+- [Electron](https://www.electronjs.org/) - Cross-platform desktop apps
+- [React](https://react.dev/) - UI framework
+- [LangGraph](https://github.com/langchain-ai/langgraph) - AI workflow orchestration
+- [OpenAI](https://openai.com/) - Language models
+- [Tailwind CSS](https://tailwindcss.com/) - Styling
+
+---
+
+Made with ❤️ for AI-first developers

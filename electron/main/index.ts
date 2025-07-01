@@ -1,7 +1,7 @@
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
-import { app, BrowserWindow, shell, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -155,10 +155,13 @@ ipcMain.handle('open-win', (_, arg) => {
   }
 })
 
-// FlowGenius IPC Handlers
+// ==========================================
+// Loadout IPC Handlers
+// ==========================================
+
 import { IPC_CHANNELS } from '../lib/ipc-channels'
 import { storage } from '../lib/storage'
-import { runWorkflow } from '../lib/workflow'
+import { runWorkflow, visualizeWorkflow, getWorkflowDebugInfo } from '../lib/workflow'
 import { startProjectChat, sendChatMessage } from '../lib/chat'
 import { startPreviewServer, stopPreviewServer } from '../lib/preview-server'
 
@@ -279,4 +282,23 @@ ipcMain.handle(IPC_CHANNELS.PREVIEW_GET_URL, async () => {
 // Stop preview server when app quits
 app.on('before-quit', async () => {
   await stopPreviewServer()
+})
+
+// Get workflow visualization
+ipcMain.handle('workflow:visualize', async () => {
+  try {
+    const mermaidDiagram = visualizeWorkflow()
+    const debugInfo = getWorkflowDebugInfo()
+    return { 
+      success: true, 
+      diagram: mermaidDiagram,
+      debugInfo 
+    }
+  } catch (error) {
+    console.error('Failed to visualize workflow:', error)
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to visualize workflow' 
+    }
+  }
 })

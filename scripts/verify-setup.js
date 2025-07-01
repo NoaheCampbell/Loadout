@@ -1,98 +1,68 @@
 #!/usr/bin/env node
+const fs = require('fs')
+const path = require('path')
+const os = require('os')
 
-import { existsSync } from 'fs';
-import { join } from 'path';
-import { config } from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-import { createRequire } from 'module';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
-
-console.log('🔍 Verifying FlowGenius setup...\n');
-
-const requiredPackages = [
-  '@langchain/langgraph',
-  '@langchain/openai',
-  '@langchain/core',
-  'dotenv',
-  'react-markdown',
-  'remark-gfm',
-  '@monaco-editor/react',
-  '@codesandbox/sandpack-react',
-  '@codesandbox/sandpack-themes',
-  'react-hot-toast',
-  'lucide-react',
-  'clsx',
-  'zustand',
-  'date-fns',
-  'nanoid'
-];
-
-let allGood = true;
-
-// Check packages
-console.log('📦 Checking dependencies:');
-for (const pkg of requiredPackages) {
-  try {
-    if (pkg === '@langchain/core') {
-      // Special handling for @langchain/core which might be a transitive dependency
-      require.resolve('@langchain/core/utils/env');
-    } else {
-      require.resolve(pkg);
-    }
-    console.log(`  ✅ ${pkg}`);
-  } catch (e) {
-    console.log(`  ❌ ${pkg} - NOT INSTALLED`);
-    allGood = false;
-  }
+// Check if we're on macOS
+if (process.platform !== 'darwin') {
+  console.error('❌ This script only works on macOS currently.')
+  process.exit(1)
 }
 
-// Check directories
-console.log('\n📁 Checking directories:');
+console.log('🔍 Verifying Loadout setup...\n')
 
-const requiredDirs = [
-  'src/components',
-  'src/hooks', 
-  'src/lib',
-  'src/store',
-  'src/types',
-  'electron/lib'
-];
+// Check storage location
+const appSupport = path.join(os.homedir(), 'Library', 'Application Support')
+const appPath = path.join(appSupport, 'Loadout')
+const projectsPath = path.join(appPath, 'projects')
+const indexPath = path.join(projectsPath, 'index.json')
 
-for (const dir of requiredDirs) {
-  if (existsSync(join(process.cwd(), dir))) {
-    console.log(`  ✅ ${dir}`);
-  } else {
-    console.log(`  ❌ ${dir} - NOT FOUND`);
-    allGood = false;
-  }
+console.log('📁 Storage Locations:')
+console.log('   App directory:', appPath)
+console.log('   Projects directory:', projectsPath)
+console.log('   Index file:', indexPath)
+console.log('')
+
+// Check if directories exist
+if (!fs.existsSync(appPath)) {
+  console.log('⚠️  App directory does not exist yet.')
+  console.log('   This is normal if you haven\'t run the app yet.')
+} else {
+  console.log('✅ App directory exists')
 }
 
-// Check .env.local
-console.log('\n🔑 Checking environment:');
-if (existsSync(join(process.cwd(), '.env.local'))) {
-  console.log('  ✅ .env.local exists');
+if (!fs.existsSync(projectsPath)) {
+  console.log('⚠️  Projects directory does not exist yet.')
+  console.log('   This will be created when you save your first project.')
+} else {
+  console.log('✅ Projects directory exists')
   
-  // Load and check for API key
-  config({ path: '.env.local' });
-  if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.startsWith('sk-')) {
-    console.log('  ✅ OPENAI_API_KEY is set');
+  // Check for projects
+  if (fs.existsSync(indexPath)) {
+    try {
+      const projects = JSON.parse(fs.readFileSync(indexPath, 'utf-8'))
+      console.log(`✅ Found ${projects.length} project(s)`)
+      
+      if (projects.length > 0) {
+        console.log('\n📊 Projects:')
+        projects.forEach((p, i) => {
+          console.log(`   ${i + 1}. ${p.title} (${p.id})`)
+        })
+      }
+    } catch (error) {
+      console.error('❌ Error reading index.json:', error.message)
+    }
   } else {
-    console.log('  ❌ OPENAI_API_KEY is not set or invalid');
-    allGood = false;
+    console.log('⚠️  No index.json file found')
   }
-} else {
-  console.log('  ❌ .env.local - NOT FOUND');
-  allGood = false;
 }
 
-// Summary
-console.log('\n' + '='.repeat(40));
-if (allGood) {
-  console.log('✅ All checks passed! Ready to start development.');
-} else {
-  console.log('❌ Some checks failed. Please fix the issues above.');
+// Check old location
+const oldPath = path.join(appSupport, 'electron-vite-react', 'projects')
+if (fs.existsSync(oldPath)) {
+  console.log('\n⚠️  Found old projects directory!')
+  console.log('   Location:', oldPath)
+  console.log('   Run "npm run migrate-projects" to move them to the new location.')
 }
-console.log('='.repeat(40)); 
+
+console.log('\n✅ Setup verification complete!') 

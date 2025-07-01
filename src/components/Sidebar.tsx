@@ -81,25 +81,36 @@ export default function Sidebar() {
   
   // Resize states with localStorage persistence
   const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = localStorage.getItem('flowgenius-sidebar-width')
+    const saved = localStorage.getItem('loadout-sidebar-width')
     return saved ? parseInt(saved, 10) : 256
   })
   const [workflowHeight, setWorkflowHeight] = useState(() => {
-    const saved = localStorage.getItem('flowgenius-workflow-height')
+    const saved = localStorage.getItem('loadout-workflow-height')
     return saved ? parseInt(saved, 10) : 256
   })
   const sidebarRef = useRef<HTMLDivElement>(null)
   const isResizingSidebar = useRef(false)
   const isResizingWorkflow = useRef(false)
 
+  // Load saved dimensions from localStorage
+  useEffect(() => {
+    const savedWidth = localStorage.getItem('loadout-sidebar-width')
+    if (savedWidth) setSidebarWidth(parseInt(savedWidth))
+    
+    const savedHeight = localStorage.getItem('loadout-workflow-height')
+    if (savedHeight) setWorkflowHeight(parseInt(savedHeight))
+  }, [])
+  
   // Save dimensions to localStorage when they change
   useEffect(() => {
-    localStorage.setItem('flowgenius-sidebar-width', sidebarWidth.toString())
-  }, [sidebarWidth])
-
-  useEffect(() => {
-    localStorage.setItem('flowgenius-workflow-height', workflowHeight.toString())
-  }, [workflowHeight])
+    if (sidebarWidth !== 280) {
+      localStorage.setItem('loadout-sidebar-width', sidebarWidth.toString())
+    }
+    
+    if (workflowHeight !== 300) {
+      localStorage.setItem('loadout-workflow-height', workflowHeight.toString())
+    }
+  }, [sidebarWidth, workflowHeight])
 
   // Define the main workflow nodes that should always be visible
   const mainWorkflowNodes = [

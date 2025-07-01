@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { useStore } from './store'
 import { ipc } from './lib/ipc'
@@ -37,12 +37,15 @@ function App() {
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 overflow-hidden">
       {/* Header */}
-      <header className="h-14 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 bg-white dark:bg-gray-800">
-        <div className="flex items-center gap-4">
-          <img src="/favicon.ico" alt="FlowGenius" className="w-8 h-8" />
-          <h1 className="text-xl font-semibold">FlowGenius</h1>
+      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center h-14 px-4">
+          <div className="flex items-center">
+            <img src="/favicon.ico" alt="Loadout" className="h-12 w-auto max-w-none" />
+          </div>
+          <div className="ml-auto flex items-center space-x-4">
+            <ThemeToggle />
+          </div>
         </div>
-        <ThemeToggle />
       </header>
 
       {/* Main Content */}

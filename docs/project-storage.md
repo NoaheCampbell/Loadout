@@ -1,53 +1,82 @@
-# FlowGenius Project Storage
+# Loadout Project Storage
 
-## Storage Locations
+## Storage Location
 
-FlowGenius stores projects in platform-specific directories:
+Loadout stores projects in platform-specific directories:
 
 ### macOS
-- **Production**: `~/Library/Application Support/FlowGenius/projects/`
+- **Production**: `~/Library/Application Support/Loadout/projects/`
 - **Development (old)**: `~/Library/Application Support/electron-vite-react/projects/`
-- **Development (new)**: `~/Library/Application Support/FlowGenius/projects/`
+- **Development (new)**: `~/Library/Application Support/Loadout/projects/`
 
 ### Windows
-- **Production**: `%APPDATA%/FlowGenius/projects/`
-- **Development**: Same as production after the configuration update
+- **Production**: `%APPDATA%/Loadout/projects/`
+- **Development**: Same as production
 
 ### Linux
-- **Production**: `~/.config/FlowGenius/projects/`
-- **Development**: Same as production after the configuration update
+- **Production**: `~/.config/Loadout/projects/`
+- **Development**: Same as production
 
 ## Project Structure
 
-Each project is stored in its own directory with a unique ID:
+Each project is stored in its own directory:
+
 ```
 projects/
-├── index.json                    # List of all projects
-├── test-ui-project/             # Example project
-│   ├── idea.txt                 # Original project idea
-│   ├── prd.md                   # Product Requirements Document
-│   ├── checklist.md             # Development checklist
-│   ├── brainlift.md             # Assumptions and decisions (optional)
-│   ├── ui_plan.json             # UI component plan
-│   ├── ui_strategy.txt          # Either "v0" or "gpt"
-│   ├── ui.tsx                   # Generated UI code (if GPT strategy)
-│   └── v0_prompt.json           # v0.dev prompt (if v0 strategy)
-└── 59A93QNOb4aRxZCkgJF0v/      # Another project...
+├── index.json                # Project registry
+├── project-id-1/
+│   ├── idea.txt             # Original idea
+│   ├── prd.md               # Product Requirements Document
+│   ├── checklist.md         # Development checklist
+│   ├── brainlift.md         # Technical assumptions
+│   ├── ui.tsx               # Generated UI code
+│   ├── ui_plan.json         # UI planning data
+│   ├── ui_strategy.txt      # UI generation strategy (v0 or gpt)
+│   └── v0_prompt.json       # v0.dev prompt (if applicable)
+└── project-id-2/
+    └── ...
 ```
 
-## Migration from Old Location
+## Migration
 
-If you've been using the development version and have projects in the old location, you can migrate them:
+If you have projects from the old location, you can migrate them:
+
+1. Check if old projects exist
+2. Copy them to the new `Loadout` directory
+3. Update the index.json file
+
+### Migration Script
 
 ```bash
-node scripts/migrate-projects.js
+# On macOS
+cd ~/Library/Application\ Support/
+ls electron-vite-react/projects/  # Check old projects
+cp -r electron-vite-react/projects/* Loadout/projects/  # Copy projects
 ```
 
-This will:
-1. Find all projects in the old `electron-vite-react` directory
-2. Copy them to the new `FlowGenius` directory
-3. Merge the project indexes
-4. Keep the originals intact (you can delete them manually later)
+## Viewing Projects
+
+To see your projects:
+
+```bash
+# macOS
+ls ~/Library/Application\ Support/Loadout/projects/
+
+# See project details
+cat ~/Library/Application\ Support/Loadout/projects/index.json | jq '.'
+```
+
+## Backup
+
+To backup your projects:
+
+```bash
+# Create backup
+tar -czf loadout-projects-backup.tar.gz -C ~/Library/Application\ Support/ Loadout/projects/
+
+# Restore backup
+tar -xzf loadout-projects-backup.tar.gz -C ~/Library/Application\ Support/
+```
 
 ## Troubleshooting
 
@@ -58,7 +87,7 @@ Check both locations:
 ls ~/Library/Application\ Support/electron-vite-react/projects/
 
 # New location
-ls ~/Library/Application\ Support/FlowGenius/projects/
+ls ~/Library/Application\ Support/Loadout/projects/
 ```
 
 ### Projects not showing in the app?

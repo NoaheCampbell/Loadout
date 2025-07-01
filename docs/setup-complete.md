@@ -1,4 +1,99 @@
-# FlowGenius Setup Complete! 🎉
+# Loadout Setup Complete! 🎉
+
+Your development environment is now ready. Here's what we've set up:
+
+## ✅ What's Ready
+
+1. **OpenAI Integration** - Your API key is configured
+2. **LangGraph Workflow** - All workflow nodes are implemented
+3. **Storage System** - Projects are saved locally 
+4. **UI Components** - All tabs and viewers are working
+5. **Export System** - Export projects as ZIP files
+
+## 📁 Where Your Projects Are Stored
+
+- macOS: `~/Library/Application Support/Loadout/projects/`
+- Windows: `%APPDATA%\Loadout\projects\`
+- Linux: `~/.config/Loadout/projects/`
+
+## 🚀 Quick Start
+
+1. **Run the app**: `npm run dev`
+2. **Create your first project**:
+   - Click "New Project" 
+   - Enter your idea (e.g., "A todo app with AI-powered task suggestions")
+   - Click "Generate Project"
+   - Watch the magic happen!
+
+## 🎯 Key Features
+
+- **Real-time Progress**: See each step of the generation process
+- **Tab Navigation**: Switch between Idea, PRD, Checklist, and UI views
+- **Export Projects**: Download everything as a ZIP file
+- **Preview UI**: See your generated UI in a live preview
+
+## 🛠 Development Commands
+
+```bash
+# Start development
+npm run dev
+
+# Build for production
+npm run build
+
+# Run tests
+npm test
+
+# Verify setup
+node scripts/verify-setup.js
+```
+
+## 📚 Project Structure
+
+```
+loadout/
+├── src/               # React frontend
+│   ├── components/    # UI components
+│   ├── lib/          # Frontend utilities
+│   └── store/        # Zustand store
+├── electron/         # Electron backend
+│   ├── main/         # Main process
+│   └── lib/          # Backend logic
+│       ├── workflow.ts    # LangGraph workflow
+│       ├── storage.ts     # File storage
+│       └── chat.ts        # Chat functionality
+├── docs/             # Documentation
+│   ├── loadout_checklist.md
+│   └── loadout_prd.md
+└── .env.local        # Your API key (git-ignored)
+```
+
+## 🎨 UI Overview
+
+- **Sidebar**: Project list and navigation
+- **Workspace**: Main content area with tabs
+  - **Idea Tab**: Enter and refine your project idea
+  - **PRD Tab**: View generated requirements
+  - **Checklist Tab**: Interactive development checklist
+  - **UI Tab**: Preview and code view of generated UI
+
+## 🔧 Troubleshooting
+
+If you encounter issues:
+
+1. **Check your API key**: Make sure it's set in `.env.local`
+2. **Check the console**: Look for error messages in the developer console
+3. **Restart the app**: Sometimes a fresh start helps
+4. **Clear storage**: Delete the projects folder if needed
+
+## 🎉 Next Steps
+
+1. Generate your first project
+2. Export and use the files in your favorite tools
+3. Customize the workflow for your needs
+4. Share your feedback!
+
+Happy building with Loadout! 🚀
 
 ## What We've Set Up
 

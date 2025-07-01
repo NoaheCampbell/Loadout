@@ -302,6 +302,196 @@ function createWorkflow() {
   return workflow.compile()
 }
 
+// Generate Mermaid diagram of the workflow with validation details
+export function visualizeWorkflow(): string {
+  const mermaid = `graph TD
+    Start([Start]) --> ProcessIdea["processIdea<br/>✓ Validate idea text<br/>✓ Clean title formatting<br/>✓ Generate description"]
+    
+    ProcessIdea -->|Success| GeneratePRD["generatePRD<br/>✓ Parse JSON response<br/>✓ Validate PRD structure<br/>✓ Fallback for missing fields"]
+    ProcessIdea -->|Error| ErrorEnd[["❌ Error: Failed to<br/>process idea"]]
+    
+    GeneratePRD -->|Success| Parallel{Parallel Execution}
+    GeneratePRD -->|Error<br/>Continue anyway| Parallel
+    
+    Parallel --> GenerateChecklist["generateChecklist<br/>✓ Check PRD exists<br/>✓ Generate phase-based tasks<br/>✓ Return empty array on fail"]
+    Parallel --> GenerateBrainlift["generateBrainlift<br/>✓ Check PRD.goals array<br/>✓ Parse assumptions/decisions<br/>✓ Skip if prerequisites missing"]
+    Parallel --> GenerateUIPlan["generateUIPlan<br/>✓ Validate component specs<br/>✓ Check for duplicates<br/>✓ Generate guidelines<br/>✓ Fallback to minimal plan"]
+    
+    GenerateChecklist --> DetermineStrategy["determineStrategy<br/>✓ Check UI plan exists<br/>✓ Analyze complexity<br/>✓ Default to GPT strategy"]
+    GenerateBrainlift --> DetermineStrategy
+    GenerateUIPlan --> DetermineStrategy
+    
+    DetermineStrategy -->|GPT Strategy| GenerateUI["generateUI (GPT)<br/>✓ Analyze components needed<br/>✓ Filter auth components<br/>✓ Generate in parallel<br/>✓ Validate each file<br/>✓ Retry on errors<br/>✓ Create helper files"]
+    DetermineStrategy -->|v0 Strategy| GenerateV0["generateUI (v0)<br/>Generate v0 prompt"]
+    
+    GenerateUI --> ValidateUI{"Validation<br/>✓ Check syntax<br/>✓ Verify imports<br/>✓ No undefined refs<br/>✓ Clean auth artifacts"}
+    
+    ValidateUI -->|Valid| UpdateChecklist["updateImplementationChecklist<br/>✓ Add technical tasks<br/>✓ Component-specific items<br/>✓ Hook implementations"]
+    ValidateUI -->|Has Issues| RetryGeneration["Retry with fixes<br/>(max 2 attempts)"]
+    
+    RetryGeneration --> ValidateUI
+    GenerateV0 --> UpdateChecklist
+    
+    UpdateChecklist --> SaveProject["saveProject<br/>✓ Save all artifacts<br/>✓ Include validation issues<br/>✓ Update storage"]
+    
+    SaveProject -->|Success| End([End])
+    SaveProject -->|Error| SaveError[["❌ Error: Failed to<br/>save project"]]
+    
+    %% Sub-process for UI Generation
+    subgraph "UI Generation Details"
+        UIComponents["Components:<br/>• Header<br/>• Sidebar<br/>• MainContent<br/>• Footer<br/>• Custom components"]
+        UIValidation["Each component:<br/>1. Generate code<br/>2. Validate syntax<br/>3. Check imports<br/>4. Clean auth refs<br/>5. Retry if needed"]
+        UIHelpers["Helper files:<br/>• _setup.js<br/>• _ComponentManifest.js<br/>• index.html"]
+    end
+    
+    %% Styling
+    classDef error fill:#ff6b6b,stroke:#c92a2a,color:#fff
+    classDef validation fill:#fab005,stroke:#f08c00,color:#000
+    classDef success fill:#51cf66,stroke:#2b8a3e,color:#fff
+    classDef parallel fill:#be4bdb,stroke:#9c36b5,color:#fff
+    classDef process fill:#4dabf7,stroke:#1864ab,color:#fff
+    
+    class ErrorEnd,SaveError error
+    class ValidateUI,RetryGeneration,UIValidation validation
+    class End,SaveProject success
+    class Parallel,GenerateChecklist,GenerateBrainlift,GenerateUIPlan parallel
+    class ProcessIdea,GeneratePRD,DetermineStrategy,GenerateUI,UpdateChecklist process`
+  
+  return mermaid
+}
+
+// Get detailed workflow state for debugging
+export function getWorkflowDebugInfo(): {
+  nodes: Array<{ name: string; description: string; validations: string[] }>
+  edges: Array<{ from: string; to: string; condition?: string }>
+  parallelGroups: Array<{ name: string; nodes: string[] }>
+} {
+  return {
+    nodes: [
+      {
+        name: 'processIdea',
+        description: 'Process raw idea into structured format',
+        validations: [
+          'Validate idea text is not empty',
+          'Clean title from markdown formatting',
+          'Remove common prefixes (Title:, Project Title:, etc.)',
+          'Ensure title is not too long (max 50 chars)',
+          'Generate description if missing'
+        ]
+      },
+      {
+        name: 'generatePRD',
+        description: 'Generate Product Requirements Document',
+        validations: [
+          'Parse JSON response from LLM',
+          'Check for required fields (problem, goals, scope, constraints, success_criteria)',
+          'Ensure goals and constraints are arrays',
+          'Provide fallback values for missing fields',
+          'Validate no nested checkboxes in requirements'
+        ]
+      },
+      {
+        name: 'generateChecklist',
+        description: 'Create phase-based development checklist',
+        validations: [
+          'Check if PRD exists',
+          'Verify PRD has goals and constraints arrays',
+          'Generate 7 phases with features and sub-features',
+          'Ensure proper checkbox formatting',
+          'Return empty array on failure (not error)'
+        ]
+      },
+      {
+        name: 'generateBrainlift',
+        description: 'Document assumptions and technical decisions',
+        validations: [
+          'Check if PRD has goals array',
+          'Parse assumptions, decisions, and context links',
+          'Skip gracefully if prerequisites missing',
+          'Return null on any error (non-critical)'
+        ]
+      },
+      {
+        name: 'generateUIPlan',
+        description: 'Plan UI components and architecture',
+        validations: [
+          'Validate component specifications',
+          'Check for duplicate responsibilities',
+          'Detect overlapping content between components',
+          'Check for navigation/branding conflicts',
+          'Generate UI build guidelines',
+          'Fallback to minimal plan (Header, MainContent, Footer)'
+        ]
+      },
+      {
+        name: 'determineStrategy',
+        description: 'Choose UI generation strategy',
+        validations: [
+          'Check if UI plan exists',
+          'Analyze component complexity',
+          'Default to GPT strategy on any error'
+        ]
+      },
+      {
+        name: 'generateUI',
+        description: 'Generate UI component files',
+        validations: [
+          'Analyze components needed from UI plan',
+          'Filter out auth-related components',
+          'Generate each component with validation',
+          'Check for React syntax errors',
+          'Verify all imports are defined',
+          'Remove undefined window references',
+          'Clean auth artifacts from code',
+          'Retry generation up to 2 times on validation failure',
+          'Generate helper files (_setup.js, _ComponentManifest.js, index.html)',
+          'Fall back to single-file generation if multi-file fails'
+        ]
+      },
+      {
+        name: 'updateImplementationChecklist',
+        description: 'Add implementation tasks to checklist',
+        validations: [
+          'Check if UI files were generated',
+          'Parse generated code for hooks and state',
+          'Add component-specific tasks',
+          'Handle both array and non-array checklist formats'
+        ]
+      },
+      {
+        name: 'saveProject',
+        description: 'Save all artifacts to storage',
+        validations: [
+          'Ensure projectIdea exists',
+          'Bundle all artifacts (PRD, checklist, UI files, etc.)',
+          'Save to file system',
+          'Handle missing optional fields gracefully'
+        ]
+      }
+    ],
+    edges: [
+      { from: '__start__', to: 'processIdea' },
+      { from: 'processIdea', to: 'generatePRD', condition: 'Always (errors stop workflow)' },
+      { from: 'generatePRD', to: 'generateChecklist', condition: 'Always (even on error)' },
+      { from: 'generatePRD', to: 'generateBrainlift', condition: 'Always (even on error)' },
+      { from: 'generatePRD', to: 'generateUIPlan', condition: 'Always (even on error)' },
+      { from: 'generateChecklist', to: 'determineStrategy' },
+      { from: 'generateBrainlift', to: 'determineStrategy' },
+      { from: 'generateUIPlan', to: 'determineStrategy' },
+      { from: 'determineStrategy', to: 'generateUI' },
+      { from: 'generateUI', to: 'updateImplementationChecklist' },
+      { from: 'updateImplementationChecklist', to: 'saveProject' },
+      { from: 'saveProject', to: '__end__' }
+    ],
+    parallelGroups: [
+      {
+        name: 'Post-PRD Processing',
+        nodes: ['generateChecklist', 'generateBrainlift', 'generateUIPlan']
+      }
+    ]
+  }
+}
+
 // Main workflow runner - now powered by LangGraph!
 export async function runWorkflow(
   idea: string,
@@ -421,8 +611,6 @@ Description: ${projectIdea.description}
 You must generate a comprehensive PRD with these sections:
 
 # Project Name
-(The actual project name)
-
 ## Project Description
 [A detailed 2-3 paragraph description of what the project is, its purpose, and value proposition]
 
@@ -430,68 +618,106 @@ You must generate a comprehensive PRD with these sections:
 [Describe the primary and secondary users in detail - who they are, their needs, pain points, and how this solution helps them]
 
 ## Desired Features
-Create 3-5 feature categories, each with 3-5 specific requirements and sub-requirements. Use checkbox format:
+Create 3-5 feature categories, each with 5-8 high-level requirements. Use checkbox format but NO SUB-ITEMS:
 
 ### [Feature Category 1]
-- [ ] [Specific requirement 1]
-    - [ ] [Sub-requirement 1a]
-    - [ ] [Sub-requirement 1b]
-- [ ] [Specific requirement 2]
-    - [ ] [Sub-requirement 2a]
-    - [ ] [Sub-requirement 2b]
+- [ ] [High-level requirement 1]
+- [ ] [High-level requirement 2]
+- [ ] [High-level requirement 3]
+- [ ] [High-level requirement 4]
+- [ ] [High-level requirement 5]
 
 ### [Feature Category 2]
-- [ ] [Specific requirement]
-    - [ ] [Sub-requirement]
+- [ ] [High-level requirement 1]
+- [ ] [High-level requirement 2]
+- [ ] [High-level requirement 3]
 
 (Continue for all feature categories)
 
 ## Design Requests
-List specific design and UX requirements with details:
+List 5-8 high-level design and UX requirements:
 - [ ] [Design requirement 1]
-    - [ ] [Specific design detail]
-    - [ ] [Another design detail]
 - [ ] [Design requirement 2]
-    - [ ] [Design detail]
+- [ ] [Design requirement 3]
+- [ ] [Design requirement 4]
+- [ ] [Design requirement 5]
 
 ## Other Notes
-- [Technical considerations]
-- [Future enhancements]
-- [Integration requirements]
-- [Performance requirements]
+- [Technical consideration or constraint]
+- [Future enhancement possibility]
+- [Integration requirement]
+- [Performance requirement]
+- [Any other important note]
 
-BE EXTREMELY DETAILED AND SPECIFIC. Each feature should be actionable and measurable. Sub-requirements should break down the main requirement into implementable pieces.
+IMPORTANT RULES:
+1. NO sub-requirements or nested checkboxes (no indented items)
+2. Keep requirements at a high level - they will be broken down into detailed tasks later
+3. Each checkbox item should be a complete, standalone requirement
+4. Be specific about features but don't drill into implementation details
+5. Design requests should focus on user experience and visual aspects
 
-Format your response as JSON with this structure to maintain the content while allowing proper parsing:
+Format your response as JSON with this structure. IMPORTANT: Preserve the FULL markdown content including headers and checkboxes:
 {
-  "problem": "[The full markdown content from Project Description section]",
-  "goals": ["[Feature Category 1 with all its requirements]", "[Feature Category 2 with all its requirements]", ...],
-  "scope": "[Combined Target Audience and scope information]",
-  "constraints": ["[Each design request as a separate item]", "[Technical constraints from Other Notes]", ...],
-  "success_criteria": ["[Measurable outcomes derived from the features]", ...]
+  "problem": "# [Project Name]\\n\\n## Project Description\\n[Full Project Description content - multiple paragraphs]",
+  "goals": [
+    "### Feature Category 1\\n- [ ] Requirement 1\\n- [ ] Requirement 2\\n- [ ] Requirement 3\\n- [ ] Requirement 4\\n- [ ] Requirement 5",
+    "### Feature Category 2\\n- [ ] Requirement 1\\n- [ ] Requirement 2\\n- [ ] Requirement 3"
+  ],
+  "scope": "[Full Target Audience description - who they are, their needs, pain points, and how this solution helps them]",
+  "constraints": [
+    "- [ ] Design requirement 1",
+    "- [ ] Design requirement 2",
+    "- [ ] Design requirement 3",
+    "- [ ] Design requirement 4",
+    "- [ ] Design requirement 5"
+  ],
+  "success_criteria": ["Technical consideration", "Future enhancement", "Integration requirement", "Performance requirement"]
 }
 
-IMPORTANT: Make the content as detailed and specific as possible. Don't use generic descriptions. Be specific to the "${projectIdea.title}" project.`
+CRITICAL: 
+- The "goals" array should have one string per feature category, with ALL requirements for that category
+- The "constraints" array should have simple checkbox items for design requirements
+- NO nested checkboxes or sub-items anywhere
+- Use \\n for line breaks within strings
+- Make the content specific to "${projectIdea.title}" but keep requirements high-level`
 
     const response = await llm.invoke([
-      new SystemMessage('You are an expert product manager creating a comprehensive PRD. Return valid JSON that preserves the detailed markdown formatting in the values. Be extremely specific and detailed in your requirements.'),
+      new SystemMessage('You are an expert product manager creating a comprehensive PRD. Return valid JSON that preserves markdown formatting with checkboxes. Keep requirements at a high level without sub-items or nested checkboxes.'),
       new HumanMessage(prompt),
     ])
 
     const content = response.content as string
+    console.log('PRD Generation - Raw AI response:', content.substring(0, 500) + '...')
+    
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error('No JSON found in response')
     
     const prd = JSON.parse(jsonMatch[0]) as PRD
+    console.log('PRD Generation - Parsed JSON:', JSON.stringify(prd, null, 2).substring(0, 500) + '...')
     
     // Ensure all required fields are present and are arrays/strings
-    return {
+    const finalPrd = {
       problem: prd.problem || projectIdea.description,
-      goals: Array.isArray(prd.goals) ? prd.goals : [],
-      scope: prd.scope || 'General users',
-      constraints: Array.isArray(prd.constraints) ? prd.constraints : [],
-      success_criteria: Array.isArray(prd.success_criteria) ? prd.success_criteria : []
+      goals: Array.isArray(prd.goals) && prd.goals.length > 0 ? prd.goals : [
+        `### Core Functionality\n- [ ] Implement ${projectIdea.title}\n- [ ] Set up project structure\n- [ ] Create main components\n- [ ] Add basic user interface\n- [ ] Design responsive layout\n- [ ] Implement navigation`
+      ],
+      scope: prd.scope || `Users who need ${projectIdea.title}. The target audience includes individuals and teams looking for a solution to efficiently manage their workflow.`,
+      constraints: Array.isArray(prd.constraints) && prd.constraints.length > 0 ? prd.constraints : [
+        `- [ ] Modern and intuitive user interface`,
+        `- [ ] Mobile-responsive design`,
+        `- [ ] Fast load times and smooth interactions`,
+        `- [ ] Accessibility compliance`,
+        `- [ ] Cross-browser compatibility`
+      ],
+      success_criteria: Array.isArray(prd.success_criteria) && prd.success_criteria.length > 0 ? prd.success_criteria : [
+        'Successfully implement core functionality',
+        'Provide intuitive user experience',
+        'Ensure application stability and performance'
+      ]
     }
+    
+    console.log('PRD Generation - Final PRD:', JSON.stringify(finalPrd, null, 2).substring(0, 500) + '...')
+    return finalPrd
   } catch (error) {
     console.error('Failed to generate PRD, using fallback:', error)
     // Return a minimal but valid PRD structure
@@ -652,14 +878,14 @@ Generate a COMPLETE and DETAILED checklist for all 7 phases.`
 function validateComponentSpecs(uiPlan: UIPlan): { valid: boolean; issues: string[] } {
   const issues: string[] = []
   
-  if (!uiPlan.component_specs) {
+  if (!uiPlan.component_specs || !Array.isArray(uiPlan.component_specs)) {
     return { valid: true, issues: [] }
   }
   
   // Check for overlapping responsibilities
-  const responsibilities = uiPlan.component_specs.map(spec => spec.responsibility.toLowerCase())
+  const responsibilities = uiPlan.component_specs.map(spec => spec.responsibility?.toLowerCase() || '')
   const duplicateResponsibilities = responsibilities.filter((resp, index) => 
-    responsibilities.indexOf(resp) !== index
+    resp && responsibilities.indexOf(resp) !== index
   )
   
   if (duplicateResponsibilities.length > 0) {
@@ -667,7 +893,9 @@ function validateComponentSpecs(uiPlan: UIPlan): { valid: boolean; issues: strin
   }
   
   // Check for overlapping content
-  const allContent = uiPlan.component_specs.flatMap(spec => spec.contains.map(c => c.toLowerCase()))
+  const allContent = uiPlan.component_specs.flatMap(spec => 
+    Array.isArray(spec.contains) ? spec.contains.map(c => c.toLowerCase()) : []
+  )
   const duplicateContent = allContent.filter((content, index) => 
     allContent.indexOf(content) !== index
   )
@@ -678,13 +906,15 @@ function validateComponentSpecs(uiPlan: UIPlan): { valid: boolean; issues: strin
   
   // Check for navigation/branding conflicts
   const navigationComponents = uiPlan.component_specs.filter(spec => 
-    spec.name.toLowerCase().includes('navigation') || 
-    spec.name.toLowerCase().includes('header')
+    spec.name && (
+      spec.name.toLowerCase().includes('navigation') || 
+      spec.name.toLowerCase().includes('header')
+    )
   )
   
   if (navigationComponents.length > 1) {
     const brandingComponents = navigationComponents.filter(comp => 
-      comp.contains.some(content => 
+      Array.isArray(comp.contains) && comp.contains.some(content => 
         content.toLowerCase().includes('logo') || 
         content.toLowerCase().includes('brand')
       )
@@ -785,21 +1015,46 @@ Format as JSON with this exact structure.
   ])
 
   const content = response.content as string
+  console.log('UI Plan Generation - Raw AI response:', content.substring(0, 800) + '...')
+  
   const jsonMatch = content.match(/\{[\s\S]*\}/)
   if (!jsonMatch) throw new Error('No JSON found in response')
   
   const plan = JSON.parse(jsonMatch[0]) as any
+  console.log('UI Plan Generation - Parsed JSON:', JSON.stringify(plan, null, 2))
   
-  // Convert enhanced plan to current UIPlan format for compatibility
+  // Convert enhanced plan to current UIPlan format for compatibility with safety checks
   const uiPlan: UIPlan = {
-    components: plan.components?.map((c: any) => c.name) || [],
+    components: Array.isArray(plan.components?.map((c: any) => c.name)) ? plan.components.map((c: any) => c.name) : [],
     layout: plan.layout?.structure || 'dashboard layout',
-    user_interactions: plan.layout?.interactions || [],
-    // Add enhanced properties
-    design_system: plan.design_system,
-    component_specs: plan.components,
-    layout_details: plan.layout
+    user_interactions: Array.isArray(plan.layout?.interactions) ? plan.layout.interactions : [],
+    // Add enhanced properties with safety checks
+    design_system: plan.design_system || {
+      primary_color: 'blue',
+      accent_color: 'green',
+      background_color: 'gray-50',
+      text_hierarchy: ['text-3xl font-bold', 'text-xl font-semibold', 'text-base'],
+      spacing_scale: ['p-2', 'p-4', 'p-6', 'p-8'],
+      component_patterns: ['rounded-lg', 'shadow-md', 'border border-gray-200']
+    },
+    component_specs: Array.isArray(plan.components) ? plan.components.map((c: any) => ({
+      name: c.name || 'Component',
+      responsibility: c.responsibility || 'Component functionality',
+      contains: Array.isArray(c.contains) ? c.contains : []
+    })) : [],
+    layout_details: plan.layout || {
+      structure: 'Standard layout',
+      content_areas: [],
+      interactions: []
+    }
   }
+  
+  // Ensure all arrays are valid
+  if (!Array.isArray(uiPlan.component_specs)) {
+    uiPlan.component_specs = []
+  }
+  
+  console.log('UI Plan Generation - Final UIPlan:', JSON.stringify(uiPlan, null, 2).substring(0, 500) + '...')
   
   // Validate component specifications to prevent content duplication
   const validation = validateComponentSpecs(uiPlan)
@@ -1468,9 +1723,25 @@ function cleanAuthArtifacts(code: string, componentName: string): string {
 function analyzeComponentsNeeded(uiPlan: UIPlan): Array<{ name: string; type: string }> {
   const componentsToGenerate: Array<{ name: string; type: string }> = []
   
+  // Safety check for uiPlan and components array
+  if (!uiPlan || !uiPlan.components || !Array.isArray(uiPlan.components)) {
+    console.warn('No valid components found in UI plan, using defaults')
+    // Return some default components
+    return [
+      { name: 'Header', type: 'navigation' },
+      { name: 'MainContent', type: 'generic' },
+      { name: 'Footer', type: 'footer' }
+    ]
+  }
+  
   // Filter out the App component as we'll generate it separately
   // ALSO filter out auth-related components
   const componentNames = uiPlan.components.filter(name => {
+    if (typeof name !== 'string') {
+      console.warn('Invalid component name:', name)
+      return false
+    }
+    
     const nameLower = name.toLowerCase()
     
     // Skip app/main/container components
@@ -1494,6 +1765,16 @@ function analyzeComponentsNeeded(uiPlan: UIPlan): Array<{ name: string; type: st
     const type = determineComponentType(name)
     componentsToGenerate.push({ name, type })
   })
+  
+  // If no components after filtering, add defaults
+  if (componentsToGenerate.length === 0) {
+    console.warn('No components to generate after filtering, using defaults')
+    return [
+      { name: 'Header', type: 'navigation' },
+      { name: 'MainContent', type: 'generic' },
+      { name: 'Footer', type: 'footer' }
+    ]
+  }
   
   // Log what we're planning to generate
   console.log('Components to generate:', componentsToGenerate)
@@ -1825,7 +2106,7 @@ const availableComponents = {
 ${exactComponentNames.map(name => `  ${name}: typeof window.${name} !== 'undefined' ? '✓' : '✗'`).join(',\n')}
 };
 
-console.log('=== FlowGenius Component Manifest ===');
+console.log('=== Loadout Component Manifest ===');
 console.log('Available components:', availableComponents);
 ${exactComponentNames.map(name => `console.log('window.${name}:', typeof window.${name});`).join('\n')}
 
@@ -1890,7 +2171,7 @@ ${files.filter(f => f.type !== 'main' && f.filename !== '_ComponentManifest.js')
   'App.js'  // App must be loaded last (changed from App.tsx)
 ];
 
-console.log('=== FlowGenius Setup ===');
+console.log('=== Loadout Setup ===');
 console.log('Components will be loaded in this order:', componentLoadOrder);
 console.log('Make sure to include all component files in your HTML in this order');
 `;
@@ -2205,7 +2486,7 @@ async function generateImplementationChecklistNode(state: WorkflowState): Promis
     })
     implementationItems.push({
       id: nanoid(),
-      text: '**Actual files created by FlowGenius:**',
+      text: '**Actual files created by Loadout:**',
       done: false
     })
     implementationItems.push({
@@ -2341,13 +2622,19 @@ async function generateImplementationChecklistNode(state: WorkflowState): Promis
 
 // Generate UI Build Guidelines document
 function generateUIBuildGuidelines(projectIdea: ProjectIdea, uiPlan: UIPlan): string {
-  const { design_system, component_specs, layout_details } = uiPlan
-  
-  // Extract component names and their types
-  const components = analyzeComponentsNeeded(uiPlan)
-  const nonAuthComponents = components.filter(comp => !isAuthRelatedComponent(comp.name))
-  
-  const guidelines = `# ${projectIdea.title} — UI Build Guide
+  try {
+    const { design_system, component_specs, layout_details } = uiPlan || {}
+    
+    // Extract component names and their types with safety checks
+    const components = analyzeComponentsNeeded(uiPlan) || []
+    const nonAuthComponents = components.filter(comp => !isAuthRelatedComponent(comp.name)) || []
+    
+    // Safe filtering functions with fallbacks
+    const navigationComponents = nonAuthComponents.filter(c => c.type === 'navigation') || []
+    const sidebarComponents = nonAuthComponents.filter(c => c.type === 'sidebar') || []
+    const otherComponents = nonAuthComponents.filter(c => c.type !== 'navigation' && c.type !== 'sidebar') || []
+    
+    const guidelines = `# ${projectIdea.title} — UI Build Guide
 
 This doc is a precise, ordered checklist for generating UI components. Follow each step exactly as specified.
 
@@ -2358,9 +2645,9 @@ This doc is a precise, ordered checklist for generating UI components. Follow ea
 \`\`\`
 src/
 ├─ components/
-│  ├─ ${nonAuthComponents.filter(c => c.type === 'navigation').map(c => c.name + '.js').join('\n│  ├─ ')}
-│  ├─ ${nonAuthComponents.filter(c => c.type === 'sidebar').map(c => c.name + '.js').join('\n│  ├─ ')}
-│  ├─ ${nonAuthComponents.filter(c => c.type !== 'navigation' && c.type !== 'sidebar').map(c => c.name + '.js').join('\n│  ├─ ')}
+${navigationComponents.length > 0 ? navigationComponents.map(c => `│  ├─ ${c.name}.js`).join('\n') : '│  ├─ Header.js'}
+${sidebarComponents.length > 0 ? sidebarComponents.map(c => `│  ├─ ${c.name}.js`).join('\n') : ''}
+${otherComponents.length > 0 ? otherComponents.map(c => `│  ├─ ${c.name}.js`).join('\n') : '│  ├─ MainContent.js'}
 ├─ App.js
 ├─ index.html
 ├─ _setup.js
@@ -2381,31 +2668,41 @@ src/
 - Border: \`border-gray-200 dark:border-gray-700\`
 
 **Typography**:
-${design_system?.text_hierarchy?.map((style, i) => `- Heading ${i + 1}: \`${style}\``).join('\n') || '- Heading 1: `text-3xl font-bold`\n- Heading 2: `text-xl font-semibold`\n- Body: `text-base`'}
+${design_system?.text_hierarchy && Array.isArray(design_system.text_hierarchy) 
+  ? design_system.text_hierarchy.map((style, i) => `- Heading ${i + 1}: \`${style}\``).join('\n') 
+  : '- Heading 1: `text-3xl font-bold`\n- Heading 2: `text-xl font-semibold`\n- Body: `text-base`'}
 
 **Spacing**:
-${design_system?.spacing_scale?.map(space => `- \`${space}\``).join('\n') || '- `p-2`, `p-4`, `p-6`, `p-8`'}
+${design_system?.spacing_scale && Array.isArray(design_system.spacing_scale)
+  ? design_system.spacing_scale.map(space => `- \`${space}\``).join('\n') 
+  : '- `p-2`, `p-4`, `p-6`, `p-8`'}
 
 **Component Patterns**:
-${design_system?.component_patterns?.map(pattern => `- \`${pattern}\``).join('\n') || '- `rounded-lg`\n- `shadow-md`\n- `border border-gray-200`'}
+${design_system?.component_patterns && Array.isArray(design_system.component_patterns)
+  ? design_system.component_patterns.map(pattern => `- \`${pattern}\``).join('\n') 
+  : '- `rounded-lg`\n- `shadow-md`\n- `border border-gray-200`'}
 
 ⸻
 
 ## 2 · Component Specifications
 
-${component_specs?.map((spec, index) => `### 2.${index + 1} ${spec.name}
+${component_specs && Array.isArray(component_specs) && component_specs.length > 0
+  ? component_specs.map((spec, index) => {
+      const contains = Array.isArray(spec.contains) ? spec.contains : []
+      return `### 2.${index + 1} ${spec.name || 'Unknown Component'}
 
-**File**: \`${spec.name}.js\`
-**Responsibility**: ${spec.responsibility}
+**File**: \`${spec.name || 'Unknown'}.js\`
+**Responsibility**: ${spec.responsibility || 'Component functionality'}
 **Must contain**:
-${spec.contains.map(item => `- ${item}`).join('\n')}
+${contains.length > 0 ? contains.map(item => `- ${item}`).join('\n') : '- Component implementation'}
 
 **Styling requirements**:
-${getComponentStylingRequirements(spec.name, design_system)}
+${getComponentStylingRequirements(spec.name || '', design_system)}
 
 **Interaction requirements**:
-${getComponentInteractions(spec.name, layout_details)}
-`).join('\n') || 'No component specifications available.'}
+${getComponentInteractions(spec.name || '', layout_details)}
+`}).join('\n') 
+  : '### No component specifications available.\n\nDefault components will be generated based on the project requirements.'}
 
 ⸻
 
@@ -2414,10 +2711,14 @@ ${getComponentInteractions(spec.name, layout_details)}
 **Overall Layout**: ${layout_details?.structure || 'Standard web application layout'}
 
 **Content Areas**:
-${layout_details?.content_areas?.map(area => `- ${area}`).join('\n') || '- Header: Navigation and branding\n- Main: Primary content area\n- Sidebar: Secondary navigation (if applicable)'}
+${layout_details?.content_areas && Array.isArray(layout_details.content_areas)
+  ? layout_details.content_areas.map(area => `- ${area}`).join('\n') 
+  : '- Header: Navigation and branding\n- Main: Primary content area\n- Sidebar: Secondary navigation (if applicable)'}
 
 **Key Interactions**:
-${layout_details?.interactions?.map(interaction => `- ${interaction}`).join('\n') || '- Standard web interactions'}
+${layout_details?.interactions && Array.isArray(layout_details.interactions)
+  ? layout_details.interactions.map(interaction => `- ${interaction}`).join('\n') 
+  : '- Standard web interactions'}
 
 ⸻
 
@@ -2425,7 +2726,9 @@ ${layout_details?.interactions?.map(interaction => `- ${interaction}`).join('\n'
 
 **CRITICAL**: Each component must stay within its defined responsibility to avoid duplication.
 
-${component_specs?.map(spec => `- **${spec.name}**: ONLY handles ${spec.responsibility.toLowerCase()}. Never duplicates content from other components.`).join('\n') || ''}
+${component_specs && Array.isArray(component_specs) && component_specs.length > 0
+  ? component_specs.map(spec => `- **${spec.name || 'Component'}**: ONLY handles ${(spec.responsibility || 'its designated functionality').toLowerCase()}. Never duplicates content from other components.`).join('\n') 
+  : '- Each component should have a single, clear responsibility'}
 
 **App.js Coordination**:
 - Must reference components as \`window.ComponentName\`
@@ -2437,7 +2740,9 @@ ${component_specs?.map(spec => `- **${spec.name}**: ONLY handles ${spec.responsi
 ## 5 · Implementation Checklist
 
 ### Component Generation Order:
-${nonAuthComponents.map((comp, i) => `${i + 1}. [ ] Generate ${comp.name} (${comp.type})`).join('\n')}
+${nonAuthComponents.length > 0 
+  ? nonAuthComponents.map((comp, i) => `${i + 1}. [ ] Generate ${comp.name} (${comp.type})`).join('\n')
+  : '1. [ ] Generate Header (navigation)\n2. [ ] Generate MainContent (content)\n3. [ ] Generate Footer (footer)'}
 ${nonAuthComponents.length + 1}. [ ] Generate App.js (main coordinator)
 ${nonAuthComponents.length + 2}. [ ] Generate supporting files (_setup.js, _ComponentManifest.js, index.html)
 
@@ -2493,7 +2798,29 @@ showModal && React.createElement(ModalComponent)
 
 When all items are checked, the UI implementation is complete and ready for testing.`
 
-  return guidelines
+    return guidelines
+  } catch (error) {
+    console.error('Error generating UI build guidelines:', error)
+    // Return a minimal guideline document as fallback
+    return `# ${projectIdea.title} — UI Build Guide
+
+## Error Generating Guidelines
+
+An error occurred while generating the UI build guidelines. The UI components will still be generated based on the project requirements.
+
+## Basic Structure
+
+- Components will be generated based on the project needs
+- Each component will use React.createElement() syntax
+- All components will be registered on the window object
+- Tailwind CSS will be used for styling
+
+## Next Steps
+
+1. Generate UI components based on the project description
+2. Create App.js to coordinate all components
+3. Test the preview in the browser`
+  }
 }
 
 // Helper function to get component styling requirements
