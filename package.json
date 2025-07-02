@@ -4,9 +4,17 @@
   "version": "2.2.0",
   "main": "dist-electron/main/index.js",
   "description": "AI-first project generator for developers.",
-  "author": "草鞋没号 <308487730@qq.com>",
+  "author": "Noah Campbell <your.email@example.com>",
   "license": "MIT",
   "private": true,
+  "homepage": "https://github.com/NoaheCampbell/flowgenius-mock",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NoaheCampbell/flowgenius-mock.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NoaheCampbell/flowgenius-mock/issues"
+  },
   "debug": {
     "env": {
       "VITE_DEV_SERVER_URL": "http://127.0.0.1:7777/"
@@ -15,11 +23,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "build": "tsc && vite build",
+    "build:app": "npm run build && electron-builder",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:win": "npm run build && electron-builder --win",
+    "build:linux": "npm run build && electron-builder --linux",
+    "dist": "npm run build && electron-builder --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --publish never",
+    "release": "npm run build && electron-builder --publish always",
     "preview": "vite preview",
     "pretest": "vite build --mode=test",
     "test": "vitest run",
-    "verify": "node scripts/verify-setup.js"
+    "verify": "node scripts/verify-setup.js",
+    "setup:build": "node scripts/setup-build.js",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "@codesandbox/sandpack-react": "^2.20.0",
@@ -66,14 +85,6 @@
     "vite-plugin-electron-renderer": "^0.14.6",
     "vite-plugin-monaco-editor": "^1.1.0",
     "vitest": "^2.1.5"
-  },
-  "homepage": "https://github.com/caoxiemeihao/electron-vite-react",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/caoxiemeihao/electron-vite-react.git"
-  },
-  "bugs": {
-    "url": "https://github.com/caoxiemeihao/electron-vite-react/issues"
   },
   "engines": {
     "node": "^14.18.0 || >=16.0.0"

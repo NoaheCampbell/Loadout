@@ -26,11 +26,14 @@ Remember, your goal is to help them develop a clear, well-thought-out project co
 
 const UI_CHAT_SYSTEM_PROMPT = `You are a helpful AI assistant specialized in UI design and React component development. You help users understand and modify their generated UI components.
 
+You have access to the actual UI code files, so you can see exactly what has been generated and help debug issues or suggest specific changes.
+
 When a user asks about their UI, you should:
 1. Answer questions about the current UI design, components, and structure
-2. Help them understand how components work and interact
-3. Suggest improvements or alternatives when asked
-4. Identify when they want to make specific changes to the UI
+2. Reference the actual code when discussing components
+3. Help them understand how components work and interact
+4. Suggest improvements or alternatives when asked
+5. Identify when they want to make specific changes to the UI
 
 When responding to edit requests:
 - Clearly acknowledge what changes they want
@@ -41,10 +44,10 @@ When responding to edit requests:
 For questions (not edits):
 - Provide helpful explanations about the UI
 - Suggest best practices and modern design patterns
-- Reference the actual components in their project
+- Reference the actual components and their code
 - Do NOT end with regeneration prompts unless they explicitly ask for changes
 
-Remember: You're helping them understand and improve their UI. Be encouraging and constructive.`
+Remember: You can see all their generated UI files and code, so provide specific, helpful guidance.`
 
 export async function startProjectChat(initialIdea: string, event: Electron.IpcMainInvokeEvent): Promise<void> {
   try {
@@ -107,7 +110,8 @@ export async function sendUIChatMessage(
   projectContext: { 
     projectIdea: string; 
     components?: string[]; 
-    uiStrategy?: string 
+    uiStrategy?: string;
+    uiFiles?: any[];
   },
   event: Electron.IpcMainInvokeEvent
 ): Promise<{ 
@@ -117,11 +121,63 @@ export async function sendUIChatMessage(
 }> {
   try {
     // Build context about the current UI
-    const uiContext = `
+    let uiContext = `
 Current project: ${projectContext.projectIdea}
 UI Strategy: ${projectContext.uiStrategy || 'React components'}
 Components: ${projectContext.components?.join(', ') || 'No components generated yet'}
     `.trim()
+    
+    // Add UI file content if available
+    if (projectContext.uiFiles && projectContext.uiFiles.length > 0) {
+      uiContext += '\n\n=== GENERATED UI FILES ===\n'
+      
+      // Include a summary of files
+      uiContext += `Total files: ${projectContext.uiFiles.length}\n`
+      uiContext += 'Files generated:\n'
+      projectContext.uiFiles.forEach((file: any) => {
+        uiContext += `- ${file.filename} (${file.type})\n`
+      })
+      
+      // Include actual code for key files (limit to prevent token overflow)
+      const mainFiles = projectContext.uiFiles.filter((f: any) => 
+        f.type === 'main' || 
+        f.filename === 'App.js' || 
+        f.filename.includes('Navigation') ||
+        f.filename.includes('Header')
+      ).slice(0, 3) // Limit to first 3 main files
+      
+      if (mainFiles.length > 0) {
+        uiContext += '\n=== KEY FILE CONTENTS ===\n'
+        mainFiles.forEach((file: any) => {
+          uiContext += `\n--- ${file.filename} ---\n`
+          // Truncate very long files to prevent token overflow
+          const maxLength = 2000
+          const content = file.content.length > maxLength 
+            ? file.content.substring(0, maxLength) + '\n... (truncated)'
+            : file.content
+          uiContext += content + '\n'
+        })
+      }
+      
+      // If user mentions a specific component, try to include its code
+      const lowerContent = content.toLowerCase()
+      const additionalFiles = projectContext.uiFiles.filter((f: any) => {
+        const fileName = f.filename.toLowerCase().replace('.js', '')
+        return lowerContent.includes(fileName) && !mainFiles.some((mf: any) => mf.filename === f.filename)
+      }).slice(0, 2)
+      
+      if (additionalFiles.length > 0) {
+        uiContext += '\n=== MENTIONED COMPONENT FILES ===\n'
+        additionalFiles.forEach((file: any) => {
+          uiContext += `\n--- ${file.filename} ---\n`
+          const maxLength = 2000
+          const content = file.content.length > maxLength 
+            ? file.content.substring(0, maxLength) + '\n... (truncated)'
+            : file.content
+          uiContext += content + '\n'
+        })
+      }
+    }
     
     const messages = [
       new SystemMessage(UI_CHAT_SYSTEM_PROMPT),

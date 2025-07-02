@@ -543,7 +543,9 @@ export default function UiTab() {
       const projectContext = {
         projectIdea: currentProjectData?.idea || 'Unknown project',
         components: componentNames,
-        uiStrategy: currentProjectData?.uiStrategy
+        uiStrategy: currentProjectData?.uiStrategy,
+        // Add the actual UI files so the AI can see the code
+        uiFiles: currentProjectData?.uiFiles || []
       }
 
       // Create a new message that we'll update as chunks arrive

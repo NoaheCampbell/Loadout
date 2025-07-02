@@ -164,6 +164,7 @@ export const ipc = {
     projectIdea: string;
     components?: string[];
     uiStrategy?: string;
+    uiFiles?: any[];
   }): Promise<{
     success: boolean;
     error?: string;

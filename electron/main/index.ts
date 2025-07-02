@@ -294,7 +294,7 @@ ipcMain.handle(IPC_CHANNELS.CHAT_MESSAGE, async (event, data: { content: string,
 ipcMain.handle(IPC_CHANNELS.UI_CHAT_MESSAGE, async (event, data: { 
   content: string, 
   chatHistory: any[], 
-  projectContext: { projectIdea: string; components?: string[]; uiStrategy?: string } 
+  projectContext: { projectIdea: string; components?: string[]; uiStrategy?: string; uiFiles?: any[] } 
 }) => {
   try {
     const result = await sendUIChatMessage(data.content, data.chatHistory, data.projectContext, event)

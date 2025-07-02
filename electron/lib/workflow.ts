@@ -1389,10 +1389,11 @@ EXAMPLE STRUCTURE:
 - Right side actions (settings, notifications, etc.)
 - Mobile hamburger menu
 
-Include navigation links like:
-  onClick: () => window.Router.navigate('dashboard')
-  onClick: () => window.Router.navigate('features')
-  onClick: () => window.Router.navigate('pricing')
+Navigation Structure:
+- Include a "Home" link that navigates to 'home'
+- Add 2-4 other navigation items relevant to "${projectContext.title}"
+- Use meaningful route names based on the project (e.g., for a task app: 'tasks', 'projects', 'settings')
+- For onClick handlers use: onClick: () => window.Router.navigate('routename')
   
 Make it STUNNING and MODERN!`
       
@@ -1995,10 +1996,19 @@ function analyzeComponentsNeeded(uiPlan: UIPlan): Array<{ name: string; type: st
   if (componentsToGenerate.length === 0) {
     console.warn('No components to generate after filtering, using defaults')
     return [
-      { name: 'Header', type: 'navigation' },
+      { name: 'NavigationHeader', type: 'navigation' },
       { name: 'MainContent', type: 'generic' },
       { name: 'Footer', type: 'footer' }
     ]
+  }
+  
+  // Ensure we have a Footer component if we have navigation
+  const hasNavigation = componentsToGenerate.some(c => c.type === 'navigation')
+  const hasFooter = componentsToGenerate.some(c => c.type === 'footer' || c.name.toLowerCase().includes('footer'))
+  
+  if (hasNavigation && !hasFooter) {
+    console.log('Adding Footer component to match navigation')
+    componentsToGenerate.push({ name: 'Footer', type: 'footer' })
   }
   
   // Log what we're planning to generate
@@ -2046,6 +2056,37 @@ function extractRouteReferences(code: string): string[] {
     }
   }
   
+  // NEW: Also check for common navigation patterns in onClick handlers
+  // This catches routes in navigation menus that might use different patterns
+  const onClickPattern = /onClick\s*:\s*\(\s*\)\s*=>\s*window\.Router\.navigate\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g
+  while ((match = onClickPattern.exec(code)) !== null) {
+    const route = match[1]
+    if (route && 
+        route !== 'home' && 
+        route !== '/' && 
+        !isAuthRelatedComponent(route) &&
+        !route.includes('${') &&
+        !route.includes('/') &&
+        /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(route)) {
+      routes.add(route)
+    }
+  }
+  
+  // NEW: Also check for navigation items in arrays (common in nav components)
+  const navItemPattern = /['"`]route['"`]\s*:\s*['"`]([^'"`]+)['"`]/g
+  while ((match = navItemPattern.exec(code)) !== null) {
+    const route = match[1]
+    if (route && 
+        route !== 'home' && 
+        route !== '/' && 
+        !isAuthRelatedComponent(route) &&
+        !route.includes('${') &&
+        !route.includes('/') &&
+        /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(route)) {
+      routes.add(route)
+    }
+  }
+  
   // Log what routes we found for debugging
   console.log('Extracted valid routes:', Array.from(routes))
   
@@ -2076,53 +2117,66 @@ async function generatePageComponent(
   
   console.log(`Generating page component: ${componentName} for route: ${sanitizedRoute}`)
 
-  const prompt = `Create a React page component for the "${sanitizedRoute}" route in the "${projectContext.title}" application.
+  // Find header/navigation component to use
+  const headerComponent = projectContext.existingComponents.find(c => 
+    c.toLowerCase().includes('header') || 
+    c.toLowerCase().includes('navigation') ||
+    c.toLowerCase().includes('nav')
+  )
+
+  const prompt = `Create a BEAUTIFUL React page component for the "${sanitizedRoute}" route in the "${projectContext.title}" application.
 
 This is a full page component that will be shown when the user navigates to the "${sanitizedRoute}" route.
 The application already has these components: ${projectContext.existingComponents.join(', ')}
 
 Requirements:
-- Create a complete page layout with relevant content for "${sanitizedRoute}"
-- Include navigation back to other pages using window.Router.navigate()
-- Use the existing components where appropriate (reference as window.ComponentName)
-- Add rich, meaningful content that fits the "${projectContext.title}" application
-- Include appropriate interactions and state management
-- Use Tailwind CSS for all styling
-- Make it look like a real, functional page
+- Create a complete, beautiful page layout with relevant content for "${sanitizedRoute}"
+${headerComponent ? `- Include the header/navigation component using: window.safeRender('${headerComponent}')` : '- Create a full-page layout (no separate header component available)'}
+- Add rich, meaningful content that demonstrates what this page would show in a real app
+- Include multiple sections with proper visual hierarchy
+- Add state management for dynamic content
+- Include buttons/links to navigate to other pages using window.Router.navigate()
+- Use modern Tailwind CSS with gradients, shadows, and animations
+- Make it look like a premium SaaS application page
 
-Example structure for a profile page:
-const ProfilePage = () => {
-  const [userData, setUserData] = React.useState({
-    name: 'John Doe',
-    email: 'john@example.com',
-    role: 'Administrator'
-  });
+Visual Requirements:
+- Beautiful gradient backgrounds or patterns
+- Card-based layouts with hover effects
+- Smooth animations and transitions
+- Proper spacing and typography
+- Modern design patterns
+
+IMPORTANT:
+- Use window.safeRender('ComponentName') when referencing other components
+- NO authentication screens or password fields
+- Include realistic mock data
+- Make it visually stunning
+- Return ONLY the component code
+
+Example structure:
+const ${componentName} = () => {
+  const [data, setData] = React.useState({ /* relevant data */ });
   
-  return React.createElement('div', { className: 'min-h-screen bg-gray-50' },
-    React.createElement(window.Header),
-    React.createElement('div', { className: 'max-w-4xl mx-auto p-6' },
-      React.createElement('h1', { className: 'text-3xl font-bold mb-6' }, 'Profile'),
-      // ... rest of the page content
+  return React.createElement('div', { className: 'min-h-screen bg-gradient-to-br from-slate-50 to-slate-100' },
+    ${headerComponent ? `window.safeRender('${headerComponent}'),` : '// No header component - create full page layout'}
+    React.createElement('main', { className: 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8' },
+      // Beautiful page content here
     )
   );
 };
 
-window.${componentName} = ${componentName};
-
-IMPORTANT: 
-- This should be a FULL PAGE component, not just a section
-- Include proper layout and spacing
-- Reference other components as window.ComponentName
-- Add navigation options to go to other pages
-- NO authentication screens or password fields
-- Return ONLY the component code`
+window.${componentName} = ${componentName};`
 
   const response = await codeLLM.invoke([
-    new SystemMessage(`You are a React expert creating page components. Generate ONLY component code, no explanations.
-Follow all the same rules as component generation:
+    new SystemMessage(`You are a React expert creating BEAUTIFUL page components for a modern SaaS application.
+    
+CRITICAL RULES:
 - Use React.createElement() for ALL elements
 - Use React.useState, React.useEffect (NOT useState, useEffect)
 - Use className for CSS classes, NEVER use 'class'
+- Reference components with window.safeRender('ComponentName')
+- Create visually stunning pages with modern design
+- Include rich, realistic content
 - NO authentication or login functionality
 - End with window.${componentName} = ${componentName};`),
     new HumanMessage(prompt)
@@ -2142,6 +2196,21 @@ Follow all the same rules as component generation:
   code = code.replace(/,\s*class\s*:\s*(['"])/g, ', className: $1')
   code = code.replace(/["']class["']\s*:/g, '"className":')
   code = code.replace(/\bclass\b(?!Name)/g, 'className')
+  
+  // Wrap in error handling
+  code = `(function() {
+  try {
+    ${code}
+    console.log('Successfully loaded page component: ${componentName}');
+  } catch (error) {
+    console.error('Failed to load page component ${componentName}:', error);
+    window.${componentName} = function() {
+      return React.createElement('div', {
+        className: 'p-4 bg-red-100 text-red-700 rounded border border-red-300'
+      }, 'Page ${componentName} failed to load: ' + error.message);
+    };
+  }
+})();`
   
   return {
     name: componentName,
@@ -2361,6 +2430,42 @@ async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgr
     }
   }
   
+  // NEW: If we have a navigation component, ensure common routes are included
+  const hasNavigationComponent = componentsToGenerate.some(comp => 
+    comp.type === 'navigation' || 
+    comp.name.toLowerCase().includes('nav') || 
+    comp.name.toLowerCase().includes('header')
+  )
+  
+  if (hasNavigationComponent) {
+    // Add common navigation routes based on project context
+    const projectKeywords = projectIdea.title.toLowerCase() + ' ' + projectIdea.description.toLowerCase()
+    let contextualRoutes: string[] = []
+    
+    // Determine appropriate routes based on project type
+    if (projectKeywords.includes('dashboard') || projectKeywords.includes('analytics') || projectKeywords.includes('admin')) {
+      contextualRoutes = ['dashboard', 'analytics', 'settings']
+    } else if (projectKeywords.includes('commerce') || projectKeywords.includes('shop') || projectKeywords.includes('store')) {
+      contextualRoutes = ['products', 'cart', 'orders']
+    } else if (projectKeywords.includes('social') || projectKeywords.includes('community') || projectKeywords.includes('forum')) {
+      contextualRoutes = ['feed', 'profile', 'messages']
+    } else if (projectKeywords.includes('task') || projectKeywords.includes('project') || projectKeywords.includes('management')) {
+      contextualRoutes = ['projects', 'tasks', 'team']
+    } else if (projectKeywords.includes('blog') || projectKeywords.includes('content') || projectKeywords.includes('publish')) {
+      contextualRoutes = ['posts', 'drafts', 'stats']
+    } else {
+      // Default routes for generic apps
+      contextualRoutes = ['dashboard', 'features', 'settings']
+    }
+    
+    contextualRoutes.forEach(route => {
+      if (!allRouteReferences.has(route)) {
+        console.log(`Adding contextual navigation route: ${route}`)
+        allRouteReferences.add(route)
+      }
+    })
+  }
+  
   // Generate route/page components if needed
   if (allRouteReferences.size > 0) {
     console.log('Generating pages for routes:', Array.from(allRouteReferences))
@@ -2450,20 +2555,24 @@ async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgr
   onProgress?.('App', 'success', undefined, false, 'UIGenerationNode')
   
   // Create a component manifest for debugging
+  const allComponentNames = files
+    .filter(f => f.type === 'component' || f.type === 'page')
+    .map(f => f.filename.replace('.js', ''))
+  
   const componentManifest = `// Component Manifest - Lists all available components
 // This file helps debug "Element type is invalid" errors
 
 const availableComponents = {
-${exactComponentNames.map(name => `  ${name}: typeof window.${name} !== 'undefined' ? '✓' : '✗'`).join(',\n')}
+${allComponentNames.map(name => `  ${name}: typeof window.${name} !== 'undefined' ? '✓' : '✗'`).join(',\n')}
 };
 
 console.log('=== Loadout Component Manifest ===');
 console.log('Available components:', availableComponents);
-${exactComponentNames.map(name => `console.log('window.${name}:', typeof window.${name});`).join('\n')}
+${allComponentNames.map(name => `console.log('window.${name}:', typeof window.${name});`).join('\n')}
 
 // Register all components that loaded successfully
 window.LoadoutComponents = {};
-${exactComponentNames.map(name => `
+${allComponentNames.map(name => `
 if (window.${name} && typeof window.${name} === 'function') {
   window.LoadoutComponents.${name} = window.${name};
 }`).join('')}
@@ -2480,7 +2589,24 @@ if (window.${name} && typeof window.${name} === 'function') {
 
 // Helper to safely render components (available before any components load)
 window.safeRender = (componentName, fallbackContent) => {
-  const Component = window[componentName];
+  // Map common component aliases
+  const componentAliases = {
+    'Header': 'NavigationHeader',  // Map Header to NavigationHeader if it exists
+    'Nav': 'NavigationHeader',
+    'Navigation': 'NavigationHeader'
+  };
+  
+  // Try the requested name first, then check aliases
+  let Component = window[componentName];
+  
+  if (!Component && componentAliases[componentName]) {
+    const aliasName = componentAliases[componentName];
+    Component = window[aliasName];
+    if (Component) {
+      console.log(\`Mapped \${componentName} to \${aliasName}\`);
+    }
+  }
+  
   if (Component && typeof Component === 'function') {
     try {
       return React.createElement(Component);
@@ -2530,15 +2656,9 @@ window.AppState = {
   }
 };
 
-// Component loading order (components first, then App)
-const componentLoadOrder = [
-${files.filter(f => f.type !== 'main' && f.filename !== '_ComponentManifest.js').map(f => `  '${f.filename}'`).join(',\n')},
-  'App.js'  // App must be loaded last (changed from App.tsx)
-];
-
+// Component loading order will be determined after all components are generated
 console.log('=== Loadout Setup ===');
-console.log('Components will be loaded in this order:', componentLoadOrder);
-console.log('Make sure to include all component files in your HTML in this order');
+console.log('Setup loaded. Component loading order will be shown in _ComponentManifest.js');
 `;
 
   files.push({
@@ -2547,7 +2667,107 @@ console.log('Make sure to include all component files in your HTML in this order
     type: 'utils' as UIFile['type']
   })
   
-  // Create an index.html template that shows proper loading order
+  console.log('UI files generation complete:', files.length, 'files')
+  console.log('Validation issues:', allValidationIssues.length, 'files with issues')
+  
+  // Fix missing component references in all files
+  files = fixMissingComponentReferences(files)
+  
+  // NEW: Detect missing components that are still referenced and generate them
+  const allComponentReferences = new Set<string>()
+  
+  // Scan all files for component references using safeRender
+  files.forEach(file => {
+    const safeRenderPattern = /window\.safeRender\s*\(\s*['"`]([A-Z][a-zA-Z0-9]*)['"`]/g
+    let match
+    while ((match = safeRenderPattern.exec(file.content)) !== null) {
+      allComponentReferences.add(match[1])
+    }
+  })
+  
+  // Find components that are referenced but not generated
+  const existingComponentNames = files
+    .filter(f => f.type === 'component' || f.type === 'page')
+    .map(f => f.filename.replace('.js', ''))
+  
+  const missingComponents = Array.from(allComponentReferences).filter(
+    componentName => !existingComponentNames.includes(componentName) && componentName !== 'App'
+  )
+  
+  // Generate missing components (like Footer)
+  if (missingComponents.length > 0) {
+    console.log('Generating missing referenced components:', missingComponents)
+    
+    for (const missingComponent of missingComponents) {
+      try {
+        onProgress?.(missingComponent, 'in-progress', `Generating missing ${missingComponent}...`, false, 'UIGenerationNode')
+        
+        // Determine component type
+        const componentType = determineComponentType(missingComponent)
+        
+        const componentCode = await generateComponentFile(
+          missingComponent,
+          componentType,
+          { 
+            title: projectIdea.title, 
+            description: projectIdea.description,
+            otherComponents: existingComponentNames,
+            layout: uiPlan.layout,
+            interactions: uiPlan.user_interactions
+          },
+          0,
+          uiPlan,
+          uiGuidelines
+        )
+        
+        files.push({
+          filename: `${missingComponent}.js`,
+          content: componentCode,
+          type: 'component' as UIFile['type']
+        })
+        
+        onProgress?.(missingComponent, 'success', undefined, false, 'UIGenerationNode')
+        console.log(`Successfully generated missing component: ${missingComponent}`)
+      } catch (error) {
+        console.error(`Failed to generate missing component ${missingComponent}:`, error)
+        onProgress?.(missingComponent, 'error', `Failed to generate`, false, 'UIGenerationNode')
+      }
+    }
+    
+    // Update the component manifest with newly generated components
+    const updatedComponentNames = files
+      .filter(f => f.type === 'component' || f.type === 'page')
+      .map(f => f.filename.replace('.js', ''))
+    
+    const updatedManifestIndex = files.findIndex(f => f.filename === '_ComponentManifest.js')
+    if (updatedManifestIndex !== -1) {
+      const updatedComponentManifest = `// Component Manifest - Lists all available components
+// This file helps debug "Element type is invalid" errors
+
+const availableComponents = {
+${updatedComponentNames.map(name => `  ${name}: typeof window.${name} !== 'undefined' ? '✓' : '✗'`).join(',\n')}
+};
+
+console.log('=== Loadout Component Manifest ===');
+console.log('Available components:', availableComponents);
+${updatedComponentNames.map(name => `console.log('window.${name}:', typeof window.${name});`).join('\n')}
+
+// Register all components that loaded successfully
+window.LoadoutComponents = {};
+${updatedComponentNames.map(name => `
+if (window.${name} && typeof window.${name} === 'function') {
+  window.LoadoutComponents.${name} = window.${name};
+}`).join('')}
+`;
+      
+      files[updatedManifestIndex] = {
+        ...files[updatedManifestIndex],
+        content: updatedComponentManifest
+      }
+    }
+  }
+  
+  // Create an index.html template that shows proper loading order (after all components are generated)
   const htmlTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2609,12 +2829,6 @@ ${files.filter(f => f.type === 'page' && !f.filename.startsWith('_')).map(f => `
       type: 'utils' as UIFile['type']
     })
   }
-  
-  console.log('UI files generation complete:', files.length, 'files')
-  console.log('Validation issues:', allValidationIssues.length, 'files with issues')
-  
-  // Fix missing component references in all files
-  files = fixMissingComponentReferences(files)
   
   // Update parent node status
   onProgress?.('UIGenerationNode', 'success', `Generated ${files.length} files`)
