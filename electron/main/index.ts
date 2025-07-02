@@ -43,6 +43,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 let win: BrowserWindow | null = null
+let chatWin: BrowserWindow | null = null
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
@@ -180,6 +181,76 @@ ipcMain.on('window-maximize', () => {
     } else {
       window.maximize()
     }
+  }
+})
+
+// Chat window handlers
+function createChatWindow() {
+  if (chatWin) {
+    chatWin.focus()
+    return
+  }
+
+  chatWin = new BrowserWindow({
+    width: 400,
+    height: 500,
+    frame: false,
+    titleBarStyle: 'hiddenInset',
+    alwaysOnTop: true,
+    resizable: true,
+    minimizable: false,
+    maximizable: false,
+    webPreferences: {
+      preload,
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  })
+
+  // Load chat window HTML
+  if (VITE_DEV_SERVER_URL) {
+    chatWin.loadURL(`${VITE_DEV_SERVER_URL}#/chat`)
+  } else {
+    chatWin.loadFile(indexHtml, { hash: 'chat' })
+  }
+
+  chatWin.on('closed', () => {
+    chatWin = null
+    // Notify main window that chat is closed
+    if (win) {
+      win.webContents.send('chat-window-closed')
+    }
+  })
+}
+
+ipcMain.on(IPC_CHANNELS.OPEN_CHAT_WINDOW, (event, data) => {
+  createChatWindow()
+  
+  // Wait for chat window to be ready, then send initial data
+  if (chatWin) {
+    chatWin.webContents.once('did-finish-load', () => {
+      if (chatWin) {
+        chatWin.webContents.send(IPC_CHANNELS.CHAT_WINDOW_SYNC, data)
+      }
+    })
+  }
+})
+
+ipcMain.on(IPC_CHANNELS.CLOSE_CHAT_WINDOW, () => {
+  if (chatWin) {
+    chatWin.close()
+  }
+})
+
+// Forward messages between main window and chat window
+ipcMain.on(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, (event, data) => {
+  // If message is from chat window, forward to main window
+  if (event.sender === chatWin?.webContents) {
+    win?.webContents.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, data)
+  } 
+  // If message is from main window, forward to chat window
+  else if (event.sender === win?.webContents) {
+    chatWin?.webContents.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, data)
   }
 })
 

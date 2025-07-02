@@ -67,6 +67,13 @@ export const IPC_CHANNELS = {
   PREVIEW_START: 'preview:start',
   PREVIEW_STOP: 'preview:stop',
   PREVIEW_GET_URL: 'preview:get-url',
+  
+  // Chat Window
+  OPEN_CHAT_WINDOW: 'chat-window:open',
+  CLOSE_CHAT_WINDOW: 'chat-window:close',
+  CHAT_WINDOW_MESSAGE: 'chat-window:message',
+  CHAT_WINDOW_SYNC: 'chat-window:sync',
+  CHAT_WINDOW_READY: 'chat-window:ready',
 } as const;
 
 export type IpcChannels = typeof IPC_CHANNELS[keyof typeof IPC_CHANNELS]; 
