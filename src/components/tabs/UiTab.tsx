@@ -257,6 +257,8 @@ export default function UiTab() {
   // Handle mouse events for dragging and resizing chat window
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
+      e.preventDefault()
+      
       if (isDraggingChat) {
         const newX = e.clientX - dragOffset.x
         const newY = e.clientY - dragOffset.y
@@ -280,7 +282,8 @@ export default function UiTab() {
       }
     }
     
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
+      e.preventDefault()
       setIsDraggingChat(false)
       setIsResizingChat(false)
       document.body.style.cursor = ''
@@ -290,13 +293,25 @@ export default function UiTab() {
     if (isDraggingChat || isResizingChat) {
       document.body.style.cursor = isDraggingChat ? 'move' : 'nwse-resize'
       document.body.style.userSelect = 'none'
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-    }
-    
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
+      
+      // Use capture phase to ensure we get all events
+      document.addEventListener('mousemove', handleMouseMove, true)
+      document.addEventListener('mouseup', handleMouseUp, true)
+      
+      // Also listen for mouse leave to handle edge cases
+      const handleMouseLeave = (e: MouseEvent) => {
+        // Only stop if mouse leaves the window entirely
+        if (e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+          handleMouseUp(e)
+        }
+      }
+      document.addEventListener('mouseleave', handleMouseLeave, true)
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove, true)
+        document.removeEventListener('mouseup', handleMouseUp, true)
+        document.removeEventListener('mouseleave', handleMouseLeave, true)
+      }
     }
   }, [isDraggingChat, isResizingChat, dragOffset, chatSize, resizeStart])
   
@@ -318,6 +333,7 @@ export default function UiTab() {
   const handleResizeMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
+    
     setResizeStart({
       width: chatSize.width,
       height: chatSize.height,
@@ -834,11 +850,19 @@ export default function UiTab() {
 
           {/* Content Area */}
           <div className="flex-1 overflow-hidden">
+            {/* Invisible overlay to capture mouse events during drag/resize */}
+            {(isDraggingChat || isResizingChat) && (
+              <div 
+                className="fixed inset-0 z-50" 
+                style={{ cursor: isDraggingChat ? 'move' : 'nwse-resize' }}
+              />
+            )}
+            
             {/* Floating Chat Window */}
             {showChat && (
               <div 
                 ref={chatWindowRef}
-                className="fixed bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col z-50"
+                className="fixed bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col z-[51]"
                 style={{ 
                   left: `${chatPosition.x}px`, 
                   top: `${chatPosition.y}px`,
@@ -996,12 +1020,12 @@ export default function UiTab() {
                     </div>
                   </>
                   
-                  {/* Resize Handle */}
+                  {/* Resize Handle - larger hit area for easier grabbing */}
                   <div
-                    className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize group"
+                    className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize group"
                     onMouseDown={handleResizeMouseDown}
                   >
-                    <div className="absolute bottom-0.5 right-0.5 w-2 h-2 border-b-2 border-r-2 border-gray-400 dark:border-gray-600 group-hover:border-blue-500 transition-colors" />
+                    <div className="absolute bottom-1 right-1 w-3 h-3 border-b-2 border-r-2 border-gray-400 dark:border-gray-600 group-hover:border-blue-500 transition-colors rounded-br" />
                   </div>
               </div>
             )}
