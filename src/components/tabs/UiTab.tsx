@@ -1025,7 +1025,19 @@ export default function UiTab() {
                     className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize group"
                     onMouseDown={handleResizeMouseDown}
                   >
-                    <div className="absolute bottom-1 right-1 w-3 h-3 border-b-2 border-r-2 border-gray-400 dark:border-gray-600 group-hover:border-blue-500 transition-colors rounded-br" />
+                    {/* Resize grip dots */}
+                    <svg 
+                      className="absolute bottom-1 right-1 w-4 h-4 text-gray-500 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors" 
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                    >
+                      <circle cx="12" cy="12" r="1.5" />
+                      <circle cx="8" cy="12" r="1.5" />
+                      <circle cx="12" cy="8" r="1.5" />
+                      <circle cx="4" cy="12" r="1.5" />
+                      <circle cx="8" cy="8" r="1.5" />
+                      <circle cx="12" cy="4" r="1.5" />
+                    </svg>
                   </div>
               </div>
             )}
