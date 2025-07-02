@@ -161,8 +161,8 @@ ipcMain.handle('open-win', (_, arg) => {
 
 import { IPC_CHANNELS } from '../lib/ipc-channels'
 import { storage } from '../lib/storage'
-import { runWorkflow, visualizeWorkflow, getWorkflowDebugInfo } from '../lib/workflow'
-import { startProjectChat, sendChatMessage } from '../lib/chat'
+import { runWorkflow, visualizeWorkflow, getWorkflowDebugInfo, regenerateUI } from '../lib/workflow'
+import { startProjectChat, sendChatMessage, sendUIChatMessage } from '../lib/chat'
 import { startPreviewServer, stopPreviewServer } from '../lib/preview-server'
 
 // Storage handlers
@@ -228,6 +228,46 @@ ipcMain.handle(IPC_CHANNELS.GENERATE_PROJECT, async (event, data: { idea: string
   }
 })
 
+// Regenerate UI for existing project
+ipcMain.handle(IPC_CHANNELS.REGENERATE_UI, async (event, data: { projectId: string, editInstructions?: string }) => {
+  const { projectId, editInstructions } = typeof data === 'string' ? { projectId: data, editInstructions: undefined } : data
+  console.log('IPC: Regenerate UI requested for project:', projectId, editInstructions ? 'with instructions' : 'without instructions')
+  
+  try {
+    const result = await regenerateUI(projectId, (node, status, message, isParent, parentNode) => {
+      console.log('IPC: UI Regen Progress -', node, status, message || '')
+      // Send progress updates to renderer
+      event.sender.send(IPC_CHANNELS.GENERATION_PROGRESS, {
+        node,
+        status,
+        message,
+        isParent,
+        parentNode
+      })
+    }, editInstructions)
+    
+    if (result.success) {
+      // Load the updated project data
+      const projectData = await storage.loadProject(projectId)
+      console.log('IPC: UI regeneration successful')
+      
+      // Play completion sound
+      event.sender.send('play-completion-sound')
+      
+      return { success: true, data: projectData }
+    } else {
+      console.log('IPC: UI regeneration failed:', result.error)
+      return { success: false, error: result.error || 'Unknown error' }
+    }
+  } catch (error) {
+    console.error('UI regeneration error:', error)
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to regenerate UI' 
+    }
+  }
+})
+
 // Chat handlers
 
 ipcMain.handle(IPC_CHANNELS.START_PROJECT_CHAT, async (event, data: { initialIdea: string }) => {
@@ -246,6 +286,21 @@ ipcMain.handle(IPC_CHANNELS.CHAT_MESSAGE, async (event, data: { content: string,
     return { success: true }
   } catch (error) {
     console.error('Failed to send chat message:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to send message' }
+  }
+})
+
+// UI Chat handler
+ipcMain.handle(IPC_CHANNELS.UI_CHAT_MESSAGE, async (event, data: { 
+  content: string, 
+  chatHistory: any[], 
+  projectContext: { projectIdea: string; components?: string[]; uiStrategy?: string } 
+}) => {
+  try {
+    const result = await sendUIChatMessage(data.content, data.chatHistory, data.projectContext, event)
+    return { success: true, data: result }
+  } catch (error) {
+    console.error('Failed to send UI chat message:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Failed to send message' }
   }
 })

@@ -544,6 +544,102 @@ export async function runWorkflow(
   }
 }
 
+// Regenerate only UI components for an existing project
+export async function regenerateUI(
+  projectId: string,
+  onProgress: ProgressCallback,
+  editInstructions?: string
+): Promise<{ success: boolean; error?: string }> {
+  console.log('🎨 Regenerating UI for project:', projectId)
+  
+  try {
+    // Load existing project data
+    const projectData = await storage.loadProject(projectId)
+    if (!projectData) {
+      throw new Error('Project not found')
+    }
+    
+    // Extract necessary data from the project
+    const projectIdea: ProjectIdea = {
+      title: extractTitle(projectData.idea || ''),
+      description: projectData.idea || ''
+    }
+    
+    if (!projectData.prd || !projectData.uiPlan) {
+      throw new Error('Project missing required data (PRD or UI Plan). Please regenerate the entire project.')
+    }
+    
+    // Show progress for UI regeneration
+    onProgress('UIRegenerationNode', 'in-progress', 'Loading project data...')
+    
+    // Regenerate UI Plan with fresh design ideas (optional - we could reuse existing)
+    onProgress('UIPlannerNode', 'in-progress', 'Refreshing UI design plan...')
+    const newUiPlan = await generateUIPlan(projectIdea, projectData.prd, editInstructions)
+    onProgress('UIPlannerNode', 'success')
+    
+    // Generate UI build guidelines (with edit instructions if provided)
+    const uiGuidelines = editInstructions 
+      ? `${generateUIBuildGuidelines(projectIdea, newUiPlan)}\n\n## USER EDIT INSTRUCTIONS\n${editInstructions}`
+      : generateUIBuildGuidelines(projectIdea, newUiPlan)
+    
+    // Show pending status for components
+    const componentsToGenerate = analyzeComponentsNeeded(newUiPlan)
+    const nonAuthComponents = componentsToGenerate.filter(comp => !isAuthRelatedComponent(comp.name))
+    
+    for (const comp of nonAuthComponents) {
+      onProgress(comp.name, 'pending', undefined, false, 'UIGenerationNode')
+    }
+    onProgress('App', 'pending', undefined, false, 'UIGenerationNode')
+    
+    // Generate new UI files
+    onProgress('UIGenerationNode', 'in-progress', 'Generating fresh UI components...')
+    const generateResult = await generateUIFiles(projectIdea, newUiPlan, onProgress, uiGuidelines)
+    const uiFiles = generateResult.files
+    const validationIssues = generateResult.validationIssues
+    onProgress('UIGenerationNode', 'success')
+    
+    // Update the project with new UI files
+    const updatedProjectFiles: Partial<ProjectFiles> = {
+      ...projectData,
+      uiPlan: newUiPlan,
+      uiFiles: uiFiles,
+      uiValidationIssues: validationIssues,
+      uiCode: uiFiles.map(file => `// File: ${file.filename}\n${file.content}`).join('\n\n')
+    }
+    
+    // Save the updated project
+    onProgress('SaveProjectNode', 'in-progress', 'Saving updated UI...')
+    await storage.saveProject(projectId, updatedProjectFiles, projectIdea.title)
+    onProgress('SaveProjectNode', 'success')
+    
+    console.log('✅ UI regenerated successfully')
+    return { success: true }
+  } catch (error) {
+    console.error('UI regeneration error:', error)
+    onProgress('UIRegenerationNode', 'error', error instanceof Error ? error.message : 'Failed to regenerate UI')
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to regenerate UI' 
+    }
+  }
+}
+
+// Helper function to extract title from idea text
+function extractTitle(idea: string): string {
+  // Try to extract a meaningful title from the idea
+  const lines = idea.split('\n')
+  const firstLine = lines[0]?.trim() || idea.trim()
+  
+  // If it's short enough, use it as the title
+  if (firstLine.length <= 50) {
+    return firstLine
+  }
+  
+  // Otherwise, take first few words
+  const words = firstLine.split(' ').slice(0, 5).join(' ')
+  return words + '...'
+}
+
 // Helper functions (unchanged)
 
 // Process idea into structured format for React app
@@ -932,7 +1028,7 @@ function validateComponentSpecs(uiPlan: UIPlan): { valid: boolean; issues: strin
 }
 
 // Generate UI plan for React application
-async function generateUIPlan(projectIdea: ProjectIdea, prd: PRD): Promise<UIPlan> {
+async function generateUIPlan(projectIdea: ProjectIdea, prd: PRD, editInstructions?: string): Promise<UIPlan> {
   // Ensure PRD has required properties
   if (!prd.goals || !Array.isArray(prd.goals)) {
     console.warn('PRD missing goals property, using empty array')
@@ -940,77 +1036,103 @@ async function generateUIPlan(projectIdea: ProjectIdea, prd: PRD): Promise<UIPla
   }
   
   const prompt = `
-Based on this project, create a comprehensive UI plan for a REACT WEB APPLICATION:
+Based on this project, create a comprehensive UI plan for a MODERN, BEAUTIFUL REACT WEB APPLICATION:
 
 Title: ${projectIdea.title}
 Problem: ${prd.problem || 'Not specified'}
 Goals: ${prd.goals.join(', ')}
 
+${editInstructions ? `IMPORTANT EDIT INSTRUCTIONS FROM USER:
+${editInstructions}
+
+Please incorporate these specific changes into the UI plan while maintaining the project's core functionality.
+` : ''}
 Create a detailed plan that includes:
 
-1. DESIGN SYSTEM:
-   - Primary color palette (main brand color + supporting colors)
-   - Typography hierarchy (headings, body text, captions)
-   - Spacing scale (consistent padding/margins)
-   - Component styling patterns
+1. MODERN DESIGN SYSTEM:
+   Choose a sophisticated color palette appropriate for "${projectIdea.title}":
+   
+   Examples of modern palettes:
+   - Tech/SaaS: primary="indigo", accent="purple", background="slate-50"
+   - Finance: primary="emerald", accent="teal", background="gray-50" 
+   - Creative: primary="violet", accent="pink", background="purple-50"
+   - Healthcare: primary="cyan", accent="blue", background="sky-50"
+   - E-commerce: primary="orange", accent="amber", background="orange-50"
+   
+   Typography should be modern and readable:
+   - Headlines: text-4xl or text-5xl with font-bold
+   - Subheadings: text-2xl or text-xl with font-semibold
+   - Body: text-base or text-lg with proper line height
+   
+   Component patterns should include:
+   - Modern rounded corners (rounded-xl, rounded-2xl)
+   - Sophisticated shadows (shadow-lg, shadow-xl)
+   - Hover effects (hover:shadow-2xl, hover:-translate-y-1)
+   - Transitions (transition-all duration-300)
 
 2. COMPONENT ARCHITECTURE:
-   - List of specific React components needed with clear responsibilities
-   - Content ownership (which component handles what content)
-   - Component hierarchy (parent-child relationships)
-   - Interaction patterns between components
+   - List of specific React components needed with CLEAR, NON-OVERLAPPING responsibilities
+   - Each component should have a SINGLE, CLEAR purpose
+   - Content ownership must be explicit (which component handles what content)
+   - Avoid content duplication between components
+   - Use descriptive component names (e.g., "TaskDashboard" not "Dashboard")
+   - Include components like Navigation, ContentArea, ActionPanel, etc. as needed
+   - DO NOT include "App" or "Main" as these are generated automatically
 
-3. LAYOUT STRUCTURE:
-   - Overall page layout (header, main, sidebar, footer areas)
-   - Content flow and organization
-   - Responsive design considerations
+3. MODERN LAYOUT:
+   - Sophisticated layout structure (not just "dashboard")
+   - Consider: hero sections, feature grids, card layouts, sidebars, modals
+   - Mobile-responsive considerations
+   - Visual hierarchy and flow
 
-CRITICAL REQUIREMENTS:
-- Each component should have ONE clear responsibility
-- Avoid content duplication between components
-- Use descriptive component names (e.g., "TaskDashboard" not "Dashboard")
-- Include components like Navigation, ContentArea, ActionPanel, etc. as needed
-- DO NOT include "App" or "Main" as these are generated automatically
-
-Example for a task management app:
+Example for a modern SaaS application:
 {
   "design_system": {
-    "primary_color": "blue",
-    "accent_color": "green", 
-    "background_color": "gray-50",
-    "text_hierarchy": ["text-3xl font-bold", "text-xl font-semibold", "text-base"],
-    "spacing_scale": ["p-2", "p-4", "p-6", "p-8"],
-    "component_patterns": ["rounded-lg", "shadow-md", "border border-gray-200"]
+    "primary_color": "indigo",
+    "accent_color": "purple", 
+    "background_color": "slate-50",
+    "text_hierarchy": ["text-5xl font-bold tracking-tight", "text-2xl font-semibold", "text-lg font-medium"],
+    "spacing_scale": ["p-4", "p-6", "p-8", "p-12"],
+    "component_patterns": ["rounded-2xl", "shadow-xl hover:shadow-2xl transition-all duration-300", "border border-slate-200", "backdrop-blur-sm"]
   },
   "components": [
     {
-      "name": "TaskNavigation",
-      "responsibility": "Main navigation and app branding only",
-      "contains": ["logo", "navigation menu", "user settings"]
+      "name": "NavigationHeader",
+      "responsibility": "Main navigation bar with branding and primary actions",
+      "contains": ["logo", "main nav links", "action buttons", "mobile menu"]
     },
     {
-      "name": "TaskSidebar", 
-      "responsibility": "Project and filter navigation",
-      "contains": ["project list", "filters", "views"]
+      "name": "HeroSection",
+      "responsibility": "Landing hero with key value proposition",
+      "contains": ["headline", "subheading", "CTA buttons", "hero image or graphic"]
     },
     {
-      "name": "TaskWorkspace",
-      "responsibility": "Main task display and editing area", 
-      "contains": ["task list", "task details", "editing forms"]
+      "name": "FeatureGrid", 
+      "responsibility": "Showcase key features in a modern grid",
+      "contains": ["feature cards", "icons", "descriptions", "animations"]
+    },
+    {
+      "name": "MetricsDashboard",
+      "responsibility": "Display key metrics and analytics",
+      "contains": ["stat cards", "charts", "trend indicators", "filters"]
     }
   ],
   "layout": {
-    "structure": "dashboard with fixed navigation, collapsible sidebar, and main workspace",
-    "content_areas": ["navigation: app branding", "sidebar: project navigation", "main: task management"],
-    "interactions": ["sidebar toggle", "task creation", "task editing"]
+    "structure": "modern SaaS layout with sticky navigation, hero section, feature showcase, and dashboard views",
+    "content_areas": ["navigation: branding and primary nav", "hero: value proposition", "features: key capabilities", "dashboard: user data and metrics"],
+    "interactions": ["smooth scrolling", "hover animations", "modal overlays", "tab switching", "data filtering"]
   }
 }
 
+Generate a UI plan that will result in a STUNNING, MODERN web application.
 Format as JSON with this exact structure.
 `
 
   const response = await llm.invoke([
-    new SystemMessage('You are a UI/UX architect creating comprehensive design plans. Return only valid JSON. Ensure clear component responsibilities to avoid content duplication.'),
+    new SystemMessage(`You are a UI/UX architect creating modern, sophisticated design plans. 
+    Focus on creating BEAUTIFUL, CONTEMPORARY designs that would impress in a portfolio.
+    Use modern color palettes, sophisticated typography, and cutting-edge UI patterns.
+    Return only valid JSON.`),
     new HumanMessage(prompt),
   ])
 
@@ -1026,16 +1148,16 @@ Format as JSON with this exact structure.
   // Convert enhanced plan to current UIPlan format for compatibility with safety checks
   const uiPlan: UIPlan = {
     components: Array.isArray(plan.components?.map((c: any) => c.name)) ? plan.components.map((c: any) => c.name) : [],
-    layout: plan.layout?.structure || 'dashboard layout',
+    layout: plan.layout?.structure || 'modern application layout',
     user_interactions: Array.isArray(plan.layout?.interactions) ? plan.layout.interactions : [],
     // Add enhanced properties with safety checks
     design_system: plan.design_system || {
-      primary_color: 'blue',
-      accent_color: 'green',
-      background_color: 'gray-50',
-      text_hierarchy: ['text-3xl font-bold', 'text-xl font-semibold', 'text-base'],
-      spacing_scale: ['p-2', 'p-4', 'p-6', 'p-8'],
-      component_patterns: ['rounded-lg', 'shadow-md', 'border border-gray-200']
+      primary_color: 'indigo',
+      accent_color: 'purple',
+      background_color: 'slate-50',
+      text_hierarchy: ['text-5xl font-bold tracking-tight', 'text-2xl font-semibold', 'text-lg font-medium'],
+      spacing_scale: ['p-4', 'p-6', 'p-8', 'p-12'],
+      component_patterns: ['rounded-2xl', 'shadow-xl hover:shadow-2xl transition-all duration-300', 'border border-slate-200']
     },
     component_specs: Array.isArray(plan.components) ? plan.components.map((c: any) => ({
       name: c.name || 'Component',
@@ -1043,7 +1165,7 @@ Format as JSON with this exact structure.
       contains: Array.isArray(c.contains) ? c.contains : []
     })) : [],
     layout_details: plan.layout || {
-      structure: 'Standard layout',
+      structure: 'Modern application layout',
       content_areas: [],
       interactions: []
     }
@@ -1145,182 +1267,295 @@ async function generateComponentFile(
   uiPlan?: UIPlan,  // Add UI plan parameter for design system access
   uiGuidelines?: string  // Add UI guidelines parameter
 ): Promise<string> {
-  // Extract design system information
-  const designSystem = uiPlan?.design_system || {
-    primary_color: 'blue',
-    accent_color: 'green',
-    background_color: 'gray-50',
-    text_hierarchy: ['text-3xl font-bold', 'text-xl font-semibold', 'text-base'],
-    spacing_scale: ['p-2', 'p-4', 'p-6', 'p-8'],
-    component_patterns: ['rounded-lg', 'shadow-md', 'border border-gray-200']
+  // Extract design system information with modern defaults, handling both old and new formats
+  let designSystem;
+  if (uiPlan?.design_system) {
+    const ds = uiPlan.design_system as any;
+    // Handle new nested format
+    if (ds.color_palette || ds.typography) {
+      designSystem = {
+        primary_color: ds.color_palette?.primary_color || ds.primary_color || 'indigo',
+        accent_color: ds.color_palette?.accent_color || ds.accent_color || 'purple',
+        background_color: ds.color_palette?.background_color || ds.background_color || 'slate-50',
+        text_hierarchy: ds.typography ? [
+          ds.typography.headlines || 'text-4xl font-bold',
+          ds.typography.subheadings || 'text-2xl font-semibold',
+          ds.typography.body_text || 'text-lg font-medium'
+        ] : ds.text_hierarchy || ['text-4xl font-bold', 'text-2xl font-semibold', 'text-lg font-medium'],
+        spacing_scale: ds.spacing_scale || ['p-3', 'p-4', 'p-6', 'p-8'],
+        component_patterns: ds.component_patterns ? (
+          Array.isArray(ds.component_patterns) ? ds.component_patterns : [
+            ds.component_patterns.elements_shape || 'rounded-xl',
+            ds.component_patterns.shadows || 'shadow-lg hover:shadow-xl transition-shadow',
+            ds.component_patterns.hover_effects || 'hover:shadow-2xl transition-all',
+            ds.component_patterns.transitions || 'transition-all duration-300'
+          ].filter(Boolean)
+        ) : ['rounded-xl', 'shadow-lg hover:shadow-xl transition-shadow', 'border border-slate-200']
+      };
+    } else {
+      // Handle old flat format
+      designSystem = ds;
+    }
+  } else {
+    // Fallback defaults
+    designSystem = {
+      primary_color: 'indigo',
+      accent_color: 'purple',
+      background_color: 'slate-50',
+      text_hierarchy: ['text-4xl font-bold', 'text-2xl font-semibold', 'text-lg font-medium'],
+      spacing_scale: ['p-3', 'p-4', 'p-6', 'p-8'],
+      component_patterns: ['rounded-xl', 'shadow-lg hover:shadow-xl transition-shadow', 'border border-slate-200']
+    };
   }
   
   // Find component specification
   const componentSpec = uiPlan?.component_specs?.find(spec => spec.name === componentName)
   
+  // Modern UI requirements to include in every component
+  const modernUIRequirements = `
+MODERN UI REQUIREMENTS - CRITICAL FOR BEAUTIFUL DESIGN:
+1. Use GRADIENTS for buttons and accents:
+   - Primary buttons: "bg-gradient-to-r from-${designSystem.primary_color}-500 to-${designSystem.primary_color}-600 hover:from-${designSystem.primary_color}-600 hover:to-${designSystem.primary_color}-700"
+   - Secondary: "bg-gradient-to-r from-${designSystem.accent_color}-500 to-${designSystem.accent_color}-600"
+
+2. Add TRANSITIONS and ANIMATIONS:
+   - Hover states: "transition-all duration-200 hover:scale-105"
+   - Shadows: "shadow-md hover:shadow-xl transition-shadow"
+   - Colors: "transition-colors duration-200"
+
+3. Use MODERN SPACING and LAYOUT:
+   - Cards: "p-6 md:p-8 space-y-4"
+   - Sections: "py-12 md:py-16 lg:py-20"
+   - Gaps: "gap-4 md:gap-6 lg:gap-8"
+
+4. Apply BEAUTIFUL BACKGROUNDS:
+   - Subtle gradients: "bg-gradient-to-br from-white to-${designSystem.background_color}"
+   - Glass effects: "backdrop-blur-sm bg-white/90"
+   - Patterns: Consider subtle patterns or mesh gradients
+
+5. SOPHISTICATED TYPOGRAPHY:
+   - Headlines: "text-transparent bg-clip-text bg-gradient-to-r from-${designSystem.primary_color}-600 to-${designSystem.accent_color}-600"
+   - Subheadings: "text-slate-700 leading-relaxed"
+   - Body: "text-slate-600 leading-7"
+
+6. MODERN CARD DESIGN:
+   - "bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden"
+   - "hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+
+7. INTERACTIVE ELEMENTS:
+   - Buttons: "px-6 py-3 font-semibold rounded-full transform hover:scale-105 transition-all duration-200"
+   - Links: "text-${designSystem.primary_color}-600 hover:text-${designSystem.primary_color}-700 underline-offset-4 hover:underline"
+   - Icons: Use emoji or Unicode symbols with proper sizing
+
+8. RESPONSIVE DESIGN:
+   - Mobile-first: Start with mobile classes, add md: and lg: prefixes
+   - Container: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
+`
+  
   // Generate contextual prompts based on component type
   const getComponentPrompt = () => {
     const baseStyles = `
+${modernUIRequirements}
+
 DESIGN SYSTEM (use these consistently):
-- Primary color: ${designSystem.primary_color} (bg-${designSystem.primary_color}-600, text-${designSystem.primary_color}-600, etc.)
-- Accent color: ${designSystem.accent_color} (bg-${designSystem.accent_color}-500, text-${designSystem.accent_color}-500, etc.)  
+- Primary color: ${designSystem.primary_color} (use full Tailwind palette: 50-900)
+- Accent color: ${designSystem.accent_color} (use full Tailwind palette: 50-900)  
 - Background: ${designSystem.background_color}
-- Text hierarchy: ${designSystem.text_hierarchy.join(', ')}
-- Spacing: ${designSystem.spacing_scale.join(', ')}
-- Component patterns: ${designSystem.component_patterns.join(', ')}
+- Text hierarchy: ${Array.isArray(designSystem.text_hierarchy) ? designSystem.text_hierarchy.join(', ') : 'text-4xl font-bold, text-2xl font-semibold, text-lg font-medium'}
+- Spacing: ${Array.isArray(designSystem.spacing_scale) ? designSystem.spacing_scale.join(', ') : 'p-3, p-4, p-6, p-8'}
+- Component patterns: ${Array.isArray(designSystem.component_patterns) ? designSystem.component_patterns.join(', ') : 'rounded-xl, shadow-lg hover:shadow-xl transition-shadow'}
 
 COMPONENT RESPONSIBILITY: ${componentSpec?.responsibility || 'Handle specific functionality for this component'}
-COMPONENT SHOULD CONTAIN: ${componentSpec?.contains?.join(', ') || 'Content appropriate for this component type'}
+COMPONENT SHOULD CONTAIN: ${Array.isArray(componentSpec?.contains) ? componentSpec.contains.join(', ') : componentSpec?.contains || 'Content appropriate for this component type'}
 `
     
     switch (componentType) {
       case 'navigation':
-        return `Create a navigation/header component with:
+        return `Create a BEAUTIFUL, MODERN navigation/header component with:
 ${baseStyles}
-- Brand/logo area (use ${designSystem.text_hierarchy[0]} for branding)
-- Navigation items relevant to "${projectContext.title}" (use hover:text-${designSystem.primary_color}-600)
-- Settings or preferences dropdown (NO user accounts)
-- Responsive mobile design (hidden md:flex for desktop items)
-- Styled with design system colors: bg-white shadow-md, proper spacing from design system
-- Any search or action buttons that make sense for this app
-- Include navigation links to relevant pages like:
-  onClick: () => window.Router.navigate('about')
+
+VISUAL REQUIREMENTS:
+- Glass morphism header: "backdrop-blur-md bg-white/80 border-b border-slate-200"
+- Sticky positioning: "sticky top-0 z-50"
+- Beautiful logo/brand area with gradient text or modern styling
+- Navigation items with smooth hover effects: "hover:text-${designSystem.primary_color}-600 transition-colors"
+- Mobile menu with slide-in animation
+- Action buttons with gradients and hover effects
+- Height: "h-16 md:h-20" with proper vertical centering
+
+EXAMPLE STRUCTURE:
+- Logo on left (can use emoji + gradient text)
+- Center navigation (hidden on mobile)
+- Right side actions (settings, notifications, etc.)
+- Mobile hamburger menu
+
+Include navigation links like:
+  onClick: () => window.Router.navigate('dashboard')
   onClick: () => window.Router.navigate('features')
-  onClick: () => window.Router.navigate('settings')
-  (Choose page names that make sense for "${projectContext.title}")
+  onClick: () => window.Router.navigate('pricing')
   
-CRITICAL: This component should ONLY handle navigation and branding. Do NOT duplicate any main content that belongs in other components.`
+Make it STUNNING and MODERN!`
       
       case 'sidebar':
-        return `Create a sidebar navigation component with:
+        return `Create a GORGEOUS sidebar navigation component with:
 ${baseStyles}
-- Menu items relevant to "${projectContext.title}"
-- Organized sections with proper spacing from design system
-- Icons where appropriate (use emoji or unicode symbols)
-- Active state handling (bg-${designSystem.primary_color}-50 text-${designSystem.primary_color}-700 for active)
-- Styled with design system: w-64 bg-${designSystem.background_color} ${designSystem.spacing_scale[2]}, hover effects
-- Proper visual hierarchy with ${designSystem.text_hierarchy[2]}, font-medium
-- Include clickable navigation items like:
-  onClick: () => window.Router.navigate('dashboard')
-  onClick: () => window.Router.navigate('analytics')
-  onClick: () => window.Router.navigate('reports')
-  (Choose menu items that make sense for "${projectContext.title}")`
+
+VISUAL REQUIREMENTS:
+- Modern styling: "bg-white border-r border-slate-200" or dark mode variant
+- Smooth animations: "transition-all duration-300"
+- Active items: "bg-gradient-to-r from-${designSystem.primary_color}-50 to-${designSystem.accent_color}-50 border-l-4 border-${designSystem.primary_color}-500"
+- Hover effects: "hover:bg-slate-50 rounded-lg mx-2"
+- Icons with proper spacing (use emoji)
+- Collapsible sections with smooth animations
+- User section at bottom (if applicable)
+
+STRUCTURE:
+- Logo/brand at top
+- Main navigation sections
+- Secondary items
+- Bottom section with settings/profile
+
+Make it feel PREMIUM and POLISHED!`
       
       case 'footer':
-        return `Create a footer component with:
+        return `Create a BEAUTIFUL footer component with:
 ${baseStyles}
-- Links relevant to "${projectContext.title}"
-- Copyright information using design system colors
-- Contact or support links
-- Social media if appropriate
-- Consistent spacing and typography from design system`
+
+VISUAL REQUIREMENTS:
+- Multi-section layout with gradient background
+- "bg-gradient-to-b from-slate-50 to-slate-100 border-t border-slate-200"
+- Organized columns with proper spacing
+- Social links with hover animations
+- Newsletter signup with modern input styling
+- Copyright with subtle styling
+
+Make it ELEGANT and PROFESSIONAL!`
       
       case 'modal':
-        return `Create a modal/dialog component with:
+        return `Create a STUNNING modal/dialog component with:
 ${baseStyles}
-- Proper overlay background (fixed inset-0 bg-black bg-opacity-50)
-- Modal container (bg-white ${designSystem.component_patterns.join(' ')})
-- Close button (absolute top-2 right-2)
-- Content area for "${projectContext.title}" functionality
-- Action buttons styled with design system colors (bg-${designSystem.primary_color}-600 text-white hover:bg-${designSystem.primary_color}-700)
-- MUST be hidden by default (useState(false))
-- Centered positioning (flex items-center justify-center)
-- Focus on feature-specific modals (settings, confirmation, detail views)
-- NO authentication or login modals`
+
+VISUAL REQUIREMENTS:
+- Backdrop: "fixed inset-0 bg-black/50 backdrop-blur-sm"
+- Modal: "bg-white rounded-2xl shadow-2xl transform transition-all"
+- Entry animation: scale and fade in
+- Close button with hover effect
+- Content with proper spacing and typography
+- Action buttons with gradients
+- Max width constraints: "max-w-md md:max-w-lg"
+
+Make it feel SMOOTH and POLISHED!`
       
       case 'form':
-        return `Create a form component with:
+        return `Create a BEAUTIFUL form component with:
 ${baseStyles}
-- Input fields relevant to "${projectContext.title}" (NO password fields)
-- Form styling using design system (border ${designSystem.component_patterns.join(' ')} focus:outline-none focus:ring-2 focus:ring-${designSystem.primary_color}-500)
-- Validation states (border-red-500 for errors, border-${designSystem.accent_color}-500 for success)
-- Submit button (bg-${designSystem.primary_color}-600 text-white ${designSystem.spacing_scale[1]} ${designSystem.component_patterns.join(' ')} hover:bg-${designSystem.primary_color}-700)
-- Clear labels (${designSystem.text_hierarchy[2]} font-medium text-gray-700) and helper text
-- Proper spacing between form elements using design system
-- Handle form submission with preventDefault
-- Example submit handler for data forms:
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const data = Object.fromEntries(formData);
-    
-    // Process form data
-    console.log('Form submitted:', data);
-    // Save data or navigate
-    window.AppState.set('formData', data);
-    window.Router.navigate('success');
-  }`
+
+VISUAL REQUIREMENTS:
+- Modern input styling: "rounded-lg border-slate-300 focus:border-${designSystem.primary_color}-500 focus:ring-2 focus:ring-${designSystem.primary_color}-200 transition-all"
+- Floating labels or modern label design
+- Error states with smooth transitions
+- Success feedback with checkmarks
+- Submit button with gradient and loading state
+- Progress indicators if multi-step
+- Input groups with icons
+
+MODERN PATTERNS:
+- Card-based layout with shadows
+- Proper spacing between elements
+- Help text with subtle styling
+- Validation feedback with animations
+
+Make forms feel DELIGHTFUL to use!`
       
       case 'datadisplay':
-        return `Create a data display component (list/table/grid) with:
+        return `Create a STUNNING data display component (list/table/grid) with:
 ${baseStyles}
-- Mock data relevant to "${projectContext.title}"
-- Sorting/filtering if appropriate
-- Styling consistent with design system
-- Empty state handling
-- Interactive elements using design system colors`
+
+VISUAL REQUIREMENTS:
+- Modern card-based design for items
+- Hover effects: "hover:shadow-lg hover:-translate-y-0.5 transition-all"
+- Alternating row colors or card shadows
+- Sort/filter controls with modern styling
+- Empty state with illustration (use emoji)
+- Loading skeleton animations
+- Pagination with modern design
+
+For GRIDS:
+- Responsive columns: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+- Card hover effects
+
+For TABLES:
+- "divide-y divide-slate-200" with hover states
+- Sticky headers if scrollable
+
+Make data BEAUTIFUL and ENGAGING!`
       
       case 'card':
-        return `Create a card/widget component with:
+        return `Create a GORGEOUS card/widget component with:
 ${baseStyles}
-- Content relevant to "${projectContext.title}"
-- Visual hierarchy using design system typography
-- Interactive elements if needed
-- Consistent styling with design system patterns
-- May include action buttons that navigate to detail pages:
-  onClick: () => window.Router.navigate('details')
-  onClick: () => window.Router.navigate('edit')
-  (Use routes that make sense for the card's content)`
+
+VISUAL REQUIREMENTS:
+- Modern card design: "bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300"
+- Image with overlay gradients (if applicable)
+- Content with visual hierarchy
+- Action buttons with hover effects
+- Stats/metrics with gradient text
+- Icons or illustrations (emoji)
+- Hover: "hover:-translate-y-1"
+
+MODERN PATTERNS:
+- Gradient accents
+- Glass morphism effects
+- Smooth animations
+- Visual indicators (badges, tags)
+
+Make it VISUALLY STRIKING!`
       
       case 'visualization':
-        return `Create a data visualization component with:
+        return `Create a BEAUTIFUL data visualization component with:
 ${baseStyles}
-- Mock data visualization for "${projectContext.title}"
-- Use simple CSS/HTML (no external chart libraries)
-- Clear labels and legends using design system typography
-- Colors consistent with design system
-- Interactive if appropriate`
+
+VISUAL REQUIREMENTS:
+- Modern chart design with gradients
+- Smooth animations on load
+- Interactive hover states
+- Beautiful color palette
+- Clear, modern typography for labels
+- Responsive sizing
+- Loading states with skeletons
+
+Use CSS/SVG for simple charts:
+- Bar charts with gradient fills
+- Progress rings with animations
+- Stat cards with trend indicators
+
+Make data VISUALLY APPEALING!`
       
       case 'container':
-        return `Create the main container/app component that:
+        return `Create the MAIN APP component with BEAUTIFUL layout:
 ${baseStyles}
-- Uses all other components: ${projectContext.otherComponents.join(', ')}
-- Implements the layout: ${projectContext.layout || 'appropriate layout for the app'}
-- Reference other components as window.ComponentName in React.createElement
-- MUST be named exactly "App" (const App = ...)
-- MUST end with: window.App = App;
-- Use design system layout classes (min-h-screen, flex, grid, etc.)
-- Apply design system background: bg-${designSystem.background_color}
-- Ensure responsive design with proper breakpoints
 
-CRITICAL SAFETY RULES:
-- ALWAYS check if a component exists before using it
-- Use this pattern: window.ComponentName ? React.createElement(window.ComponentName) : null
-- Example: window.${projectContext.otherComponents[0] || 'Header'} ? React.createElement(window.${projectContext.otherComponents[0] || 'Header'}) : null
-- This prevents "Element type is invalid" errors
+CRITICAL REQUIREMENTS:
+- Modern, sophisticated layout
+- Proper spacing and visual hierarchy
+- Beautiful background (subtle gradients or patterns)
+- Smooth transitions between sections
+- Mobile-responsive design
 
-CRITICAL COORDINATION RULES:
-- Do NOT duplicate content that belongs in other components
-- Navigation component handles: app branding, navigation menu, user actions
-- Sidebar component handles: secondary navigation, filters, project lists  
-- Content components handle: main functionality and data display
-- The App component should ONLY coordinate layout and routing, not duplicate content
+LAYOUT REQUIREMENTS:
+- Use design system consistently
+- Create visual flow between sections
+- Add subtle animations/transitions
+- Ensure proper contrast and readability
+- ALWAYS use window.safeRender('ComponentName') when referencing other components
+- This prevents errors if a component failed to load
 
-${uiPlan?.layout_details?.content_areas ? `
+${uiPlan?.layout_details?.content_areas && Array.isArray(uiPlan.layout_details.content_areas) ? `
 CONTENT AREA ASSIGNMENTS:
 ${uiPlan.layout_details.content_areas.map(area => `- ${area}`).join('\n')}
 ` : ''}
 
-ROUTING SUPPORT:
-- You can use window.Router.navigate('routeName') to change pages
-- Use window.Router.getCurrentRoute() to get current route
-- Use window.Router.onRouteChange(callback) to listen for route changes
-- Use window.AppState.set(key, value) to store application state
-- Use window.AppState.get(key) to retrieve application state
-- The App component should ALWAYS render the appropriate layout based on current route
-- For routes that don't have specific page components, show the default home layout
-
-Example App with SAFE component references:
+EXAMPLE BEAUTIFUL APP STRUCTURE:
 const App = () => {
   const [currentRoute, setCurrentRoute] = React.useState(window.Router.getCurrentRoute() || 'home');
   
@@ -1331,36 +1566,42 @@ const App = () => {
     return unsubscribe;
   }, []);
   
-  // Route to different page components (with safety checks)
-  if (currentRoute === 'about' && window.AboutPage) {
-    return React.createElement(window.AboutPage);
-  } else if (currentRoute === 'settings' && window.SettingsPage) {
-    return React.createElement(window.SettingsPage);
-  }
-  
-  // Default home layout with SAFE component references
-  return React.createElement('div', { className: 'min-h-screen bg-${designSystem.background_color}' },
-    window.${projectContext.otherComponents[0]} ? React.createElement(window.${projectContext.otherComponents[0]}) : null,
-    React.createElement('div', { className: 'flex flex-1' },
-      window.${projectContext.otherComponents[1]} ? React.createElement(window.${projectContext.otherComponents[1]}) : null,
-      React.createElement('main', { className: 'flex-1 p-6' },
-        // Main content here
+  return React.createElement('div', { 
+    className: 'min-h-screen bg-gradient-to-br from-slate-50 to-slate-100' 
+  },
+    // Gradient background overlay
+    React.createElement('div', { 
+      className: 'fixed inset-0 bg-gradient-to-br from-${designSystem.primary_color}-500/5 to-${designSystem.accent_color}-500/5 pointer-events-none' 
+    }),
+    
+    // Main content
+    React.createElement('div', { className: 'relative z-10' },
+      // Safely render components that might not have loaded
+      window.safeRender ? window.safeRender('Header') : null,
+      
+      React.createElement('div', { className: 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8' },
+        // Your main layout here with beautiful spacing and sections
       )
     )
   );
-};`
+};
+
+Make the ENTIRE APP feel PREMIUM and POLISHED!`
       
-      // ... other component types with design system integration
       default:
-        return `Create a ${componentName} component that:
+        return `Create a BEAUTIFUL ${componentName} component that:
 ${baseStyles}
-- Serves its purpose in the "${projectContext.title}" application
-- Follows the design system consistently
-- Implements: ${componentSpec?.responsibility || 'appropriate functionality'}
-- Contains: ${componentSpec?.contains?.join(', ') || 'relevant content'}
-- Has appropriate content and functionality
-- Follows React best practices
-- Includes any necessary state management`
+
+VISUAL REQUIREMENTS:
+- Modern, polished design
+- Smooth animations and transitions
+- Beautiful typography and spacing
+- Gradient accents where appropriate
+- Hover states and interactive feedback
+- Responsive design
+- Visual hierarchy
+
+Make it STUNNING and PROFESSIONAL!`
     }
   }
 
@@ -1380,7 +1621,7 @@ DO NOT include any of the following:
 
 RETURN ONLY THE COMPONENT CODE!` : ''
 
-  const prompt = `Create a React component for: ${projectContext.title}
+  const prompt = `Create a BEAUTIFUL, MODERN React component for: ${projectContext.title}
 ${projectContext.description ? `Project Description: ${projectContext.description}` : ''}
 
 Component: ${componentName}
@@ -1389,91 +1630,59 @@ Requirements: ${componentPrompt}
 ${projectContext.otherComponents.length > 0 ? `Other components in this app: ${projectContext.otherComponents.join(', ')}` : ''}
 ${projectContext.interactions ? `Key interactions: ${projectContext.interactions.slice(0, 3).join(', ')}` : ''}
 
-Rules:
+CRITICAL STYLING RULES:
+1. Make it VISUALLY STUNNING - this should look like a $100k+ enterprise app
+2. Use MODERN design patterns (gradients, shadows, animations, glass morphism)
+3. Add SMOOTH transitions and hover effects
+4. Create BEAUTIFUL spacing and typography
+5. Ensure PERFECT responsive design
+6. Use RICH, REALISTIC mock data that demonstrates the app's purpose
+7. Include DELIGHTFUL micro-interactions
+
+TECHNICAL RULES:
 - Use React.createElement() - NO JSX
-- Use React.useState and React.useEffect (NOT just useState/useEffect)
-- All React APIs must be prefixed with React. (e.g., React.useState, React.useEffect, React.useCallback)
-- CRITICAL: Use { className: 'value' } NEVER { class: 'value' }
-- The word "class" should NEVER appear except in "className"
-- IMPORTANT: Use Tailwind CSS classes for ALL styling (e.g., className: 'bg-blue-500 text-white p-4 rounded-lg')
-- DO NOT use custom CSS class names - ONLY use Tailwind utility classes
-- Add rich, realistic mock data relevant to "${projectContext.title}"
+- All React APIs must be prefixed with React. (e.g., React.useState, React.useEffect)
+- Use { className: 'value' } NEVER { class: 'value' }
+- Use Tailwind CSS classes for ALL styling
 - Include proper event handlers and state management
-- Make it visually appealing with proper spacing, colors, and layout using Tailwind
 - Minimum 80-150 lines of actual component code
-- CRITICAL: End with EXACT component name: window.${componentName} = ${componentName};
-- The component function MUST be named EXACTLY: ${componentName}
-- NO destructuring of React (no const {useState} = React)
+- When referencing other components, use: window.safeRender('ComponentName')
+- End with: window.${componentName} = ${componentName};
+- NO authentication/login functionality
 
-CRITICAL - NO AUTHENTICATION:
-- DO NOT create login, signup, or authentication screens
-- DO NOT include password fields or login forms
-- DO NOT implement user authentication logic
-- DO NOT create user registration or sign-in flows
-- Focus on the core functionality without authentication
+IMPORTANT: When using other components:
+- Instead of: React.createElement(window.SomeComponent)
+- Use: window.safeRender('SomeComponent')
+- This prevents errors if a component fails to load
 
-NAVIGATION & STATE:
-- Use window.Router.navigate('routeName') to change pages
-- Use window.Router.getCurrentRoute() to get current route
-- Use window.Router.onRouteChange(callback) to listen for route changes
-- Use window.AppState.set(key, value) to store global data
-- Use window.AppState.get(key) to retrieve global data
-- Navigate between functional pages like 'home', 'about', 'products', 'contact', etc.
-${componentType === 'container' ? `- When using other components, reference them as window.ComponentName
-- Example: React.createElement(window.${projectContext.otherComponents[0] || 'Header'})
-- Arrange components according to: ${projectContext.layout}` : ''}
-
-Example of CORRECT syntax:
-const ${componentName} = () => {
-  const [count, setCount] = React.useState(0);
-  React.useEffect(() => { ... }, []);
-  return React.createElement('div', { className: 'bg-white p-6 rounded-lg shadow-md' }, ...);
-};
-React.createElement('button', { className: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700' }, 'Click')
-${componentType === 'container' ? `// Safe component reference:
-window.${projectContext.otherComponents[0] || 'Header'} ? React.createElement(window.${projectContext.otherComponents[0] || 'Header'}) : null` : ''}
-window.${componentName} = ${componentName}; // EXACT name match
+Make this component BEAUTIFUL enough to impress in a portfolio!
 ${retryWarning}
 Return ONLY the component code, no explanations.`
 
   const systemMessage = retryAttempt > 0 
-    ? `You are a React code generator. YOUR PREVIOUS ATTEMPT FAILED.
+    ? `You are a React code generator creating BEAUTIFUL, MODERN UI components. YOUR PREVIOUS ATTEMPT FAILED.
 
 STRICT OUTPUT REQUIREMENTS:
 - Output ONLY valid JavaScript code
-- NO markdown formatting or code blocks (\`\`\`)
-- NO explanatory text before, after, or within the code
-- NO comments explaining what you're doing
-- Start directly with the component code
-- End with window.${componentName} = ${componentName};
-
-FOLLOW ALL REACT RULES:
-- Use React.createElement() for ALL elements
-- Use React.useState, React.useEffect (NOT useState, useEffect)
-- Use className for CSS classes, NEVER use 'class'
-- Use Tailwind CSS utility classes only
+- NO markdown formatting or code blocks
+- NO explanatory text
+- Create VISUALLY STUNNING components
 
 RETURN ONLY THE COMPONENT CODE!`
-    : `You are a React expert. Generate ONLY component code. No markdown, no explanations.
-CRITICAL RULES - MUST FOLLOW:
-1. Use React.useState NOT useState
-2. Use React.useEffect NOT useEffect  
-3. Use React.createElement NOT createElement
-4. End with window.${componentName} = ${componentName};
-5. NEVER use the word 'class' anywhere - ALWAYS use 'className' instead
-6. For CSS classes: { className: 'my-class' } NEVER { class: 'my-class' }
-7. The word 'class' should NOT appear ANYWHERE in your code except as part of 'className'
-8. Create FULLY FUNCTIONAL components with rich content and realistic data
-9. Components should demonstrate the actual functionality of the ${projectContext.title} app
-10. Include appropriate state management, event handlers, and mock data
-11. USE TAILWIND CSS CLASSES for ALL styling - no custom CSS classes
-12. Make components visually appealing with proper Tailwind classes for:
-    - Colors (bg-blue-500, text-white, border-gray-300)
-    - Spacing (p-4, m-2, space-y-4)
-    - Layout (flex, grid, absolute)
-    - Typography (text-xl, font-bold)
-    - Effects (shadow-lg, rounded-lg, hover:bg-blue-600)
-NO import statements, NO export statements.`
+    : `You are an expert React developer creating BEAUTIFUL, MODERN, PREMIUM UI components.
+
+Your components should look like they belong in a high-end SaaS application worth $100k+.
+
+CRITICAL RULES:
+1. Use React.createElement() syntax
+2. Create VISUALLY STUNNING designs with gradients, animations, and modern patterns
+3. Use sophisticated Tailwind CSS combinations
+4. Include rich, realistic mock data
+5. Add smooth transitions and micro-interactions
+6. Ensure perfect responsive design
+7. Make it portfolio-worthy!
+
+Output ONLY the component code, no explanations.`
 
   // Include UI guidelines in the system message if available
   const enhancedSystemMessage = uiGuidelines 
@@ -1504,11 +1713,27 @@ NO import statements, NO export statements.`
     code = code.substring(firstConstOrFunction)
   }
   
-  // Ensure the component has window assignment
+  // Ensure the component has window assignment with error handling
   if (!code.includes(`window.${componentName}`)) {
     console.warn(`Component ${componentName} missing window assignment, adding it...`)
     code = code.trim() + `\n\nwindow.${componentName} = ${componentName};`
   }
+  
+  // Wrap the entire component in a try-catch to prevent syntax errors from breaking other scripts
+  code = `(function() {
+  try {
+    ${code}
+    console.log('Successfully loaded component: ${componentName}');
+  } catch (error) {
+    console.error('Failed to load component ${componentName}:', error);
+    // Register a placeholder component that shows the error
+    window.${componentName} = function() {
+      return React.createElement('div', {
+        className: 'p-4 bg-red-100 text-red-700 rounded border border-red-300'
+      }, 'Component ${componentName} failed to load: ' + error.message);
+    };
+  }
+})();`
   
   // Fix common issues
   if (code.includes('useState(') && !code.includes('React.useState(')) {
@@ -1924,12 +2149,138 @@ Follow all the same rules as component generation:
   }
 }
 
+// Fix missing component references in generated files
+function fixMissingComponentReferences(files: UIFile[]): UIFile[] {
+  console.log('Fixing missing component references...')
+  
+  // Get all available component names (excluding App and utility files)
+  const availableComponents = files
+    .filter(f => f.type === 'component' || f.type === 'page')
+    .map(f => f.filename.replace('.js', ''))
+  
+  console.log('Available components:', availableComponents)
+  
+  // Track all missing components found
+  const missingComponents = new Set<string>()
+  
+  // Common patterns for component references
+  const componentReferencePatterns = [
+    // Direct window references: window.ComponentName
+    /window\.([A-Z][a-zA-Z0-9]*)/g,
+    // React.createElement with window components: React.createElement(window.ComponentName
+    /React\.createElement\s*\(\s*window\.([A-Z][a-zA-Z0-9]*)/g,
+    // References in conditionals: window.ComponentName ? 
+    /window\.([A-Z][a-zA-Z0-9]*)\s*\?/g,
+    // typeof checks: typeof window.ComponentName
+    /typeof\s+window\.([A-Z][a-zA-Z0-9]*)/g
+  ]
+  
+  const updatedFiles = files.map(file => {
+    let updatedContent = file.content
+    const foundReferences = new Set<string>()
+    
+    // Find all component references in this file
+    componentReferencePatterns.forEach(pattern => {
+      // Reset regex state for each file
+      pattern.lastIndex = 0
+      let match
+      while ((match = pattern.exec(file.content)) !== null) {
+        foundReferences.add(match[1])
+      }
+    })
+    
+    // Check each reference
+    foundReferences.forEach(componentName => {
+      if (!availableComponents.includes(componentName) && componentName !== 'App') {
+        console.log(`File ${file.filename}: Found reference to missing component: ${componentName}`)
+        missingComponents.add(componentName)
+        
+        // Replace direct createElement calls with safeRender
+        updatedContent = updatedContent.replace(
+          new RegExp(`React\\.createElement\\s*\\(\\s*window\\.${componentName}([\\s,\\)])`, 'g'),
+          `window.safeRender('${componentName}')$1`
+        )
+        
+        // Replace conditional renders
+        updatedContent = updatedContent.replace(
+          new RegExp(`window\\.${componentName}\\s*\\?\\s*React\\.createElement\\s*\\(\\s*window\\.${componentName}\\s*\\)\\s*:\\s*null`, 'g'),
+          `window.safeRender('${componentName}')`
+        )
+        
+        // Replace simple window references in conditionals
+        updatedContent = updatedContent.replace(
+          new RegExp(`window\\.${componentName}\\s*\\?`, 'g'),
+          `(typeof window.${componentName} !== 'undefined') ?`
+        )
+        
+        // Add comment about the missing component
+        if (!updatedContent.includes(`// Note: ${componentName} component`)) {
+          updatedContent = `// Note: ${componentName} component reference was automatically fixed\n${updatedContent}`
+        }
+      }
+    })
+    
+      // Also ensure all component references use safeRender when appropriate
+    availableComponents.forEach(componentName => {
+      // Skip if it's the current file's component
+      if (file.filename === `${componentName}.js`) return
+      
+      // Replace React.createElement(window.Component) with window.safeRender('Component')
+      const createElementPattern = new RegExp(`React\\.createElement\\s*\\(\\s*window\\.${componentName}\\s*([,\\)])`, 'g')
+      if (createElementPattern.test(updatedContent)) {
+        console.log(`File ${file.filename}: Updating ${componentName} to use safeRender`)
+        updatedContent = updatedContent.replace(
+          createElementPattern,
+          `window.safeRender('${componentName}'$1`
+        )
+      }
+    })
+    
+    // Special handling for App.js - ensure it can handle missing components gracefully
+    if (file.filename === 'App.js') {
+      // Add a check at the beginning if not already present
+      if (!updatedContent.includes('window.safeRender') && !updatedContent.includes('// Ensure safeRender is available')) {
+        const appFunctionMatch = updatedContent.match(/const\s+App\s*=\s*\(\s*\)\s*=>\s*{/)
+        if (appFunctionMatch && appFunctionMatch.index !== undefined) {
+          const insertPos = appFunctionMatch.index + appFunctionMatch[0].length
+          const safeRenderCheck = `
+  // Ensure safeRender is available
+  if (!window.safeRender) {
+    console.error('safeRender not available - make sure _setup.js is loaded first');
+    return React.createElement('div', { className: 'p-8 text-red-600' }, 
+      'Error: Application not properly initialized. Please check console.'
+    );
+  }
+`
+          updatedContent = updatedContent.slice(0, insertPos) + safeRenderCheck + updatedContent.slice(insertPos)
+        }
+      }
+    }
+    
+    if (updatedContent !== file.content) {
+      console.log(`Fixed component references in ${file.filename}`)
+    }
+    
+    return {
+      ...file,
+      content: updatedContent
+    }
+  })
+  
+  if (missingComponents.size > 0) {
+    console.log('⚠️  Missing components that were referenced:', Array.from(missingComponents))
+    console.log('These references have been fixed to use safeRender fallbacks')
+  }
+  
+  return updatedFiles
+}
+
 // Generate multiple UI files for the application
 async function generateUIFiles(projectIdea: ProjectIdea, uiPlan: UIPlan, onProgress?: ProgressCallback, uiGuidelines?: string): Promise<{
   files: UIFile[];
   validationIssues: FileValidationIssues[];
 }> {
-  const files: UIFile[] = []
+  let files: UIFile[] = []
   const allValidationIssues: FileValidationIssues[] = []
   
   // Send parent node progress
@@ -2110,18 +2461,12 @@ console.log('=== Loadout Component Manifest ===');
 console.log('Available components:', availableComponents);
 ${exactComponentNames.map(name => `console.log('window.${name}:', typeof window.${name});`).join('\n')}
 
-// Helper to safely render components
-window.safeRender = (componentName) => {
-  const Component = window[componentName];
-  if (Component) {
-    return React.createElement(Component);
-  } else {
-    console.warn(\`Component "\${componentName}" not found on window object\`);
-    return React.createElement('div', { className: 'p-4 bg-red-100 text-red-700 rounded' }, 
-      \`Missing component: \${componentName}\`
-    );
-  }
-};
+// Register all components that loaded successfully
+window.LoadoutComponents = {};
+${exactComponentNames.map(name => `
+if (window.${name} && typeof window.${name} === 'function') {
+  window.LoadoutComponents.${name} = window.${name};
+}`).join('')}
 `;
 
   files.push({
@@ -2132,6 +2477,26 @@ window.safeRender = (componentName) => {
   
   // Create a setup file that loads components in the correct order
   const setupContent = `// Setup file - Load this BEFORE your app to ensure all components are available
+
+// Helper to safely render components (available before any components load)
+window.safeRender = (componentName, fallbackContent) => {
+  const Component = window[componentName];
+  if (Component && typeof Component === 'function') {
+    try {
+      return React.createElement(Component);
+    } catch (error) {
+      console.error(\`Error rendering \${componentName}:\`, error);
+      return React.createElement('div', { className: 'p-4 bg-yellow-100 text-yellow-700 rounded border border-yellow-300' }, 
+        \`Error rendering \${componentName}: \${error.message}\`
+      );
+    }
+  } else {
+    console.warn(\`Component "\${componentName}" not found on window object\`);
+    return fallbackContent || React.createElement('div', { className: 'p-4 bg-gray-100 text-gray-600 rounded' }, 
+      \`Component \${componentName} is not available\`
+    );
+  }
+};
 
 // Mock Router for navigation
 window.Router = {
@@ -2200,13 +2565,13 @@ console.log('Make sure to include all component files in your HTML in this order
   <script src="_setup.js"></script>
   
   <!-- Load components in order (components before App) -->
-${files.filter(f => f.type === 'component' && !f.filename.startsWith('_')).map(f => `  <script src="${f.filename}"></script>`).join('\n')}
+${files.filter(f => f.type === 'component' && !f.filename.startsWith('_')).map(f => `  <script src="${f.filename}" onerror="console.error('Failed to load ${f.filename}')"></script>`).join('\n')}
   
   <!-- Load page components -->
-${files.filter(f => f.type === 'page' && !f.filename.startsWith('_')).map(f => `  <script src="${f.filename}"></script>`).join('\n')}
+${files.filter(f => f.type === 'page' && !f.filename.startsWith('_')).map(f => `  <script src="${f.filename}" onerror="console.error('Failed to load ${f.filename}')"></script>`).join('\n')}
   
   <!-- Load App last -->
-  <script src="App.js"></script>
+  <script src="App.js" onerror="console.error('Failed to load App.js')"></script>
   
   <!-- Load component manifest for debugging -->
   <script src="_ComponentManifest.js"></script>
@@ -2247,6 +2612,9 @@ ${files.filter(f => f.type === 'page' && !f.filename.startsWith('_')).map(f => `
   
   console.log('UI files generation complete:', files.length, 'files')
   console.log('Validation issues:', allValidationIssues.length, 'files with issues')
+  
+  // Fix missing component references in all files
+  files = fixMissingComponentReferences(files)
   
   // Update parent node status
   onProgress?.('UIGenerationNode', 'success', `Generated ${files.length} files`)
@@ -2625,18 +2993,24 @@ function generateUIBuildGuidelines(projectIdea: ProjectIdea, uiPlan: UIPlan): st
   try {
     const { design_system, component_specs, layout_details } = uiPlan || {}
     
-    // Extract component names and their types with safety checks
-    const components = analyzeComponentsNeeded(uiPlan) || []
-    const nonAuthComponents = components.filter(comp => !isAuthRelatedComponent(comp.name)) || []
-    
-    // Safe filtering functions with fallbacks
-    const navigationComponents = nonAuthComponents.filter(c => c.type === 'navigation') || []
-    const sidebarComponents = nonAuthComponents.filter(c => c.type === 'sidebar') || []
-    const otherComponents = nonAuthComponents.filter(c => c.type !== 'navigation' && c.type !== 'sidebar') || []
+      // Extract component names and their types with safety checks
+  const components = analyzeComponentsNeeded(uiPlan) || []
+  const nonAuthComponents = components.filter(comp => !isAuthRelatedComponent(comp.name)) || []
+  
+  // Safe filtering functions with fallbacks
+  const navigationComponents = nonAuthComponents.filter(c => c.type === 'navigation') || []
+  const sidebarComponents = nonAuthComponents.filter(c => c.type === 'sidebar') || []
+  const otherComponents = nonAuthComponents.filter(c => c.type !== 'navigation' && c.type !== 'sidebar') || []
+  
+  // Extract design system colors safely (handling both old and new formats)
+  const ds = design_system as any
+  const primaryColor = ds?.color_palette?.primary_color || ds?.primary_color || 'indigo'
+  const accentColor = ds?.color_palette?.accent_color || ds?.accent_color || 'purple'
+  const backgroundColor = ds?.color_palette?.background_color || ds?.background_color || 'slate-50'
     
     const guidelines = `# ${projectIdea.title} — UI Build Guide
 
-This doc is a precise, ordered checklist for generating UI components. Follow each step exactly as specified.
+This doc is a precise, ordered checklist for generating BEAUTIFUL, MODERN UI components. Follow each step exactly as specified.
 
 ⸻
 
@@ -2658,29 +3032,32 @@ ${otherComponents.length > 0 ? otherComponents.map(c => `│  ├─ ${c.name}.j
 
 ⸻
 
-## 1 · Design System Tokens
+## 1 · MODERN Design System
 
-**Colors**:
-- Primary: \`${design_system?.primary_color || 'blue'}\` (bg-${design_system?.primary_color || 'blue'}-600, hover:bg-${design_system?.primary_color || 'blue'}-700)
-- Accent: \`${design_system?.accent_color || 'green'}\` (bg-${design_system?.accent_color || 'green'}-500)
-- Background: \`${design_system?.background_color || 'gray-50'}\`
-- Surface: \`bg-white dark:bg-gray-800\`
-- Border: \`border-gray-200 dark:border-gray-700\`
+### 🎨 Color Palette
+- **Primary**: \`${primaryColor}\` — Use full spectrum (50-900)
+  - Buttons: \`bg-gradient-to-r from-${primaryColor}-500 to-${primaryColor}-600\`
+  - Hover: \`hover:from-${primaryColor}-600 hover:to-${primaryColor}-700\`
+- **Accent**: \`${accentColor}\` — For highlights and CTAs
+- **Background**: \`${backgroundColor}\` with subtle gradients
+- **Glass**: \`backdrop-blur-sm bg-white/80\` for modern overlays
 
-**Typography**:
+### ✨ Typography & Effects
 ${design_system?.text_hierarchy && Array.isArray(design_system.text_hierarchy) 
-  ? design_system.text_hierarchy.map((style, i) => `- Heading ${i + 1}: \`${style}\``).join('\n') 
-  : '- Heading 1: `text-3xl font-bold`\n- Heading 2: `text-xl font-semibold`\n- Body: `text-base`'}
+  ? design_system.text_hierarchy.map((style, i) => `- **H${i + 1}**: \`${style}\` ${i === 0 ? '+ gradient text for impact' : ''}`).join('\n') 
+  : '- **H1**: `text-5xl font-bold tracking-tight` + gradient text\n- **H2**: `text-2xl font-semibold`\n- **Body**: `text-lg leading-relaxed`'}
 
-**Spacing**:
-${design_system?.spacing_scale && Array.isArray(design_system.spacing_scale)
-  ? design_system.spacing_scale.map(space => `- \`${space}\``).join('\n') 
-  : '- `p-2`, `p-4`, `p-6`, `p-8`'}
-
-**Component Patterns**:
+### 🎯 Modern Patterns
 ${design_system?.component_patterns && Array.isArray(design_system.component_patterns)
   ? design_system.component_patterns.map(pattern => `- \`${pattern}\``).join('\n') 
-  : '- `rounded-lg`\n- `shadow-md`\n- `border border-gray-200`'}
+  : '- `rounded-2xl` — Modern, soft corners\n- `shadow-xl hover:shadow-2xl` — Dynamic shadows\n- `transition-all duration-300` — Smooth animations\n- `hover:-translate-y-1` — Lift on hover'}
+
+### 🚀 Key Visual Requirements
+- **Gradients**: Use on buttons, headers, accents
+- **Animations**: All interactive elements must have transitions
+- **Hover States**: Transform, scale, or shadow changes
+- **Glass Morphism**: For modals and overlays
+- **Rich Content**: NO placeholder text - use realistic data
 
 ⸻
 
@@ -2689,51 +3066,63 @@ ${design_system?.component_patterns && Array.isArray(design_system.component_pat
 ${component_specs && Array.isArray(component_specs) && component_specs.length > 0
   ? component_specs.map((spec, index) => {
       const contains = Array.isArray(spec.contains) ? spec.contains : []
-      return `### 2.${index + 1} ${spec.name || 'Unknown Component'}
+      return `### 2.${index + 1} ${spec.name || 'Unknown Component'} ✨
 
 **File**: \`${spec.name || 'Unknown'}.js\`
 **Responsibility**: ${spec.responsibility || 'Component functionality'}
 **Must contain**:
 ${contains.length > 0 ? contains.map(item => `- ${item}`).join('\n') : '- Component implementation'}
 
-**Styling requirements**:
-${getComponentStylingRequirements(spec.name || '', design_system)}
+**🎨 Visual Requirements**:
+${getModernComponentStyling(spec.name || '', design_system)}
 
-**Interaction requirements**:
+**⚡ Interaction Requirements**:
 ${getComponentInteractions(spec.name || '', layout_details)}
+
+**Make it BEAUTIFUL**: This component should look like it belongs in a $100k+ SaaS app!
 `}).join('\n') 
   : '### No component specifications available.\n\nDefault components will be generated based on the project requirements.'}
 
 ⸻
 
-## 3 · Layout Structure
+## 3 · Modern Layout Structure
 
-**Overall Layout**: ${layout_details?.structure || 'Standard web application layout'}
+**Overall Layout**: ${layout_details?.structure || 'Premium SaaS application layout'}
+
+**Visual Hierarchy**:
+- **Hero/Header**: Eye-catching with gradients or patterns
+- **Content Areas**: Clear sections with proper spacing
+- **Cards**: Elevated with shadows and hover effects
+- **CTAs**: Prominent with gradient backgrounds
 
 **Content Areas**:
 ${layout_details?.content_areas && Array.isArray(layout_details.content_areas)
   ? layout_details.content_areas.map(area => `- ${area}`).join('\n') 
-  : '- Header: Navigation and branding\n- Main: Primary content area\n- Sidebar: Secondary navigation (if applicable)'}
+  : '- Header: Glass morphism navigation\n- Hero: Gradient background with animations\n- Main: Card-based content with hover effects\n- Footer: Multi-column with subtle background'}
 
 **Key Interactions**:
 ${layout_details?.interactions && Array.isArray(layout_details.interactions)
-  ? layout_details.interactions.map(interaction => `- ${interaction}`).join('\n') 
-  : '- Standard web interactions'}
+  ? layout_details.interactions.map(interaction => `- ${interaction} (with smooth animations)`).join('\n') 
+  : '- Smooth scrolling\n- Hover animations\n- Modal transitions\n- Loading states'}
 
 ⸻
 
-## 4 · Component Coordination Rules
+## 4 · Visual Excellence Checklist
 
-**CRITICAL**: Each component must stay within its defined responsibility to avoid duplication.
+### 🎨 Every Component Must Have:
+- [ ] **Gradient** elements (buttons, headers, or accents)
+- [ ] **Hover effects** (transform, shadow, or color transitions)
+- [ ] **Smooth animations** (transition-all duration-200/300)
+- [ ] **Modern spacing** (generous padding, proper gaps)
+- [ ] **Rich mock data** (realistic content, no placeholders)
+- [ ] **Responsive design** (mobile-first approach)
+- [ ] **Visual polish** (shadows, borders, rounded corners)
 
-${component_specs && Array.isArray(component_specs) && component_specs.length > 0
-  ? component_specs.map(spec => `- **${spec.name || 'Component'}**: ONLY handles ${(spec.responsibility || 'its designated functionality').toLowerCase()}. Never duplicates content from other components.`).join('\n') 
-  : '- Each component should have a single, clear responsibility'}
-
-**App.js Coordination**:
-- Must reference components as \`window.ComponentName\`
-- Always check existence: \`window.ComponentName ? React.createElement(window.ComponentName) : null\`
-- Layout structure must match section 3 specifications
+### ⚡ Animation Requirements:
+- Buttons: \`transform hover:scale-105 transition-all duration-200\`
+- Cards: \`hover:shadow-2xl hover:-translate-y-1 transition-all duration-300\`
+- Links: \`hover:text-${primaryColor}-600 transition-colors\`
+- Modals: Entry/exit animations with scale and opacity
 
 ⸻
 
@@ -2741,62 +3130,95 @@ ${component_specs && Array.isArray(component_specs) && component_specs.length > 
 
 ### Component Generation Order:
 ${nonAuthComponents.length > 0 
-  ? nonAuthComponents.map((comp, i) => `${i + 1}. [ ] Generate ${comp.name} (${comp.type})`).join('\n')
-  : '1. [ ] Generate Header (navigation)\n2. [ ] Generate MainContent (content)\n3. [ ] Generate Footer (footer)'}
-${nonAuthComponents.length + 1}. [ ] Generate App.js (main coordinator)
-${nonAuthComponents.length + 2}. [ ] Generate supporting files (_setup.js, _ComponentManifest.js, index.html)
+  ? nonAuthComponents.map((comp, i) => `${i + 1}. [ ] Generate ${comp.name} (${comp.type}) — Make it STUNNING`).join('\n')
+  : '1. [ ] Generate Header (navigation) — Glass morphism design\n2. [ ] Generate HeroSection — Gradient background\n3. [ ] Generate FeatureCards — Modern card design\n4. [ ] Generate Footer — Professional layout'}
+${nonAuthComponents.length + 1}. [ ] Generate App.js — Beautiful layout coordination
+${nonAuthComponents.length + 2}. [ ] Generate supporting files
 
-### Validation Checks:
-- [ ] No content duplication between components
-- [ ] All components follow their assigned responsibilities  
-- [ ] Design system tokens used consistently
-- [ ] All interactive elements have proper handlers
-- [ ] App.js safely references all components
-- [ ] Component loading order is correct in index.html
-
-⸻
-
-## 6 · Code Generation Rules
-
-1. **Use React.createElement() exclusively** - no JSX
-2. **End each component with**: \`window.ComponentName = ComponentName;\`
-3. **No imports** - React is globally available
-4. **Mock data** should be realistic and relevant to "${projectIdea.title}"
-5. **State management**: Use React.useState for local state
-6. **Navigation**: Use \`window.Router.navigate('routeName')\`
-7. **Global state**: Use \`window.AppState.get/set('key', value)\`
+### Quality Checks:
+- [ ] **Visual Impact**: Would this impress in a portfolio?
+- [ ] **Modern Design**: Gradients, animations, glass effects?
+- [ ] **Rich Content**: Realistic data and interactions?
+- [ ] **Smooth UX**: All transitions working properly?
+- [ ] **Responsive**: Beautiful on all screen sizes?
+- [ ] **Consistency**: Design system applied throughout?
 
 ⸻
 
-## 7 · Common Patterns
+## 6 · Modern Code Patterns
 
-### Navigation Links:
+### 🎨 Gradient Button:
 \`\`\`javascript
 React.createElement('button', {
-  className: 'hover:text-${design_system?.primary_color || 'blue'}-600 cursor-pointer',
-  onClick: () => window.Router.navigate('about')
-}, 'About')
+  className: 'px-6 py-3 bg-gradient-to-r from-${primaryColor}-500 to-${primaryColor}-600 text-white font-semibold rounded-full shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200',
+  onClick: handleClick
+}, 'Get Started')
 \`\`\`
 
-### Form Submission:
+### 💫 Modern Card:
 \`\`\`javascript
-const handleSubmit = (e) => {
-  e.preventDefault();
-  const formData = new FormData(e.target);
-  const data = Object.fromEntries(formData);
-  // Process data
-  window.AppState.set('formData', data);
-};
+React.createElement('div', {
+  className: 'bg-white rounded-2xl shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 p-6 border border-slate-100'
+}, content)
 \`\`\`
 
-### Conditional Rendering:
+### 🌟 Glass Header:
 \`\`\`javascript
-showModal && React.createElement(ModalComponent)
+React.createElement('header', {
+  className: 'sticky top-0 z-50 backdrop-blur-md bg-white/80 border-b border-slate-200'
+}, navigationContent)
+\`\`\`
+
+### ✨ Gradient Text:
+\`\`\`javascript
+React.createElement('h1', {
+  className: 'text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-${primaryColor}-600 to-${accentColor}-600'
+}, 'Amazing Headline')
 \`\`\`
 
 ⸻
 
-When all items are checked, the UI implementation is complete and ready for testing.`
+## 7 · Common Modern Patterns
+
+### Hero Section with Gradient:
+\`\`\`javascript
+React.createElement('section', {
+  className: 'relative py-20 bg-gradient-to-br from-${primaryColor}-50 to-${accentColor}-50'
+}, [
+  // Gradient overlay
+  React.createElement('div', {
+    className: 'absolute inset-0 bg-gradient-to-br from-white/50 to-transparent'
+  }),
+  // Content
+  React.createElement('div', {
+    className: 'relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'
+  }, heroContent)
+])
+\`\`\`
+
+### Feature Grid:
+\`\`\`javascript
+React.createElement('div', {
+  className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8'
+}, features.map(feature => 
+  React.createElement('div', {
+    className: 'group',
+    key: feature.id
+  }, 
+    React.createElement('div', {
+      className: 'bg-white rounded-2xl shadow-lg group-hover:shadow-2xl p-8 transition-all duration-300 transform group-hover:-translate-y-1'
+    }, featureContent)
+  )
+))
+\`\`\`
+
+⸻
+
+## CRITICAL: Make it BEAUTIFUL! 🎨✨
+
+Every component should be portfolio-worthy. This is not just a functional app - it should be visually stunning, modern, and professional. Use gradients, animations, and beautiful typography to create an exceptional user experience.
+
+When all items are checked, you'll have a GORGEOUS, MODERN UI ready to impress!`
 
     return guidelines
   } catch (error) {
@@ -2823,41 +3245,61 @@ An error occurred while generating the UI build guidelines. The UI components wi
   }
 }
 
-// Helper function to get component styling requirements
-function getComponentStylingRequirements(componentName: string, designSystem: any): string {
+// Helper function to get modern component styling requirements
+function getModernComponentStyling(componentName: string, designSystem: any): string {
   const name = componentName.toLowerCase()
   const ds = designSystem || {}
   
   if (name.includes('navigation') || name.includes('header')) {
-    return `- Fixed/sticky positioning: \`sticky top-0 z-50\`
-- Background: \`bg-white dark:bg-gray-900 shadow-md\`
-- Height: \`h-16\` or \`h-20\`
-- Padding: \`${ds.spacing_scale?.[2] || 'px-6 py-4'}\`
-- Flex layout: \`flex items-center justify-between\``
+    return `- **Glass morphism**: \`backdrop-blur-md bg-white/80 dark:bg-gray-900/80\`
+- **Sticky positioning**: \`sticky top-0 z-50\`
+- **Shadow**: \`shadow-md\` with subtle border
+- **Height**: \`h-16 md:h-20\` with perfect vertical centering
+- **Logo**: Gradient text or modern branding
+- **Nav items**: Smooth hover transitions with color changes
+- **CTA button**: Gradient background with hover scale effect`
+  } else if (name.includes('hero')) {
+    return `- **Gradient background**: \`bg-gradient-to-br from-${ds.primary_color || 'indigo'}-50 to-${ds.accent_color || 'purple'}-50\`
+- **Large typography**: \`text-5xl md:text-6xl font-bold\` with gradient text
+- **Spacing**: Generous padding \`py-20 md:py-32\`
+- **CTA buttons**: Large with gradients and hover animations
+- **Decorative elements**: Subtle patterns or shapes
+- **Animations**: Fade-in or slide-up on load`
   } else if (name.includes('sidebar')) {
-    return `- Width: \`w-64\` or \`w-72\`
-- Background: \`${ds.background_color ? `bg-${ds.background_color}` : 'bg-gray-50'} dark:bg-gray-900\`
-- Full height: \`h-full\` or \`min-h-screen\`
-- Padding: \`${ds.spacing_scale?.[2] || 'p-4'}\`
-- Overflow: \`overflow-y-auto\``
+    return `- **Modern design**: Clean with subtle shadows
+- **Active states**: \`bg-gradient-to-r from-${ds.primary_color || 'indigo'}-50 to-${ds.accent_color || 'purple'}-50\`
+- **Hover effects**: \`hover:bg-slate-50 rounded-lg\` with transitions
+- **Icons**: Properly sized with color coordination
+- **Sections**: Clear visual separation
+- **Smooth animations**: For expand/collapse`
+  } else if (name.includes('card') || name.includes('feature')) {
+    return `- **Card design**: \`bg-white rounded-2xl shadow-xl\`
+- **Hover effect**: \`hover:shadow-2xl hover:-translate-y-1\`
+- **Transitions**: \`transition-all duration-300\`
+- **Content spacing**: Generous padding \`p-6 md:p-8\`
+- **Images**: With rounded corners and overlays
+- **CTAs**: Gradient buttons or styled links`
   } else if (name.includes('modal')) {
-    return `- Overlay: \`fixed inset-0 bg-black bg-opacity-50 z-50\`
-- Modal container: \`bg-white dark:bg-gray-800 ${ds.component_patterns?.join(' ') || 'rounded-lg shadow-xl'}\`
-- Centering: \`flex items-center justify-center\`
-- Max width: \`max-w-lg w-full mx-4\`
-- Hidden by default: \`useState(false)\``
+    return `- **Backdrop**: \`bg-black/50 backdrop-blur-sm\`
+- **Modal**: \`bg-white rounded-2xl shadow-2xl\`
+- **Animation**: Scale and fade in/out
+- **Max width**: Responsive sizing
+- **Content**: Well-spaced with clear hierarchy
+- **Actions**: Prominent buttons with gradients`
   } else if (name.includes('form')) {
-    return `- Input styling: \`border ${ds.component_patterns?.filter((p: string) => p.includes('rounded')).join(' ') || 'rounded'} px-3 py-2\`
-- Focus states: \`focus:outline-none focus:ring-2 focus:ring-${ds.primary_color || 'blue'}-500\`
-- Label styling: \`${ds.text_hierarchy?.[2] || 'text-sm'} font-medium text-gray-700\`
-- Button styling: \`bg-${ds.primary_color || 'blue'}-600 text-white ${ds.component_patterns?.join(' ') || 'rounded-lg'} hover:bg-${ds.primary_color || 'blue'}-700\`
-- Form spacing: \`space-y-4\``
+    return `- **Modern inputs**: \`rounded-lg border-slate-300 focus:border-${ds.primary_color || 'indigo'}-500 focus:ring-2\`
+- **Labels**: Clean typography with proper spacing
+- **Error states**: Smooth color transitions
+- **Submit button**: Gradient with loading states
+- **Form card**: White background with shadow
+- **Validation**: Inline with smooth animations`
   } else {
-    return `- Container styling: \`${ds.component_patterns?.join(' ') || 'rounded-lg shadow-md'}\`
-- Background: \`bg-white dark:bg-gray-800\`
-- Padding: \`${ds.spacing_scale?.[2] || 'p-4'}\`
-- Text color: \`text-gray-900 dark:text-gray-100\`
-- Interactive elements: \`hover:bg-gray-100 dark:hover:bg-gray-700\``
+    return `- **Container**: \`bg-white rounded-2xl shadow-lg\` or gradient background
+- **Spacing**: Generous padding with proper sections
+- **Typography**: Clear hierarchy with modern fonts
+- **Interactive elements**: All with hover states
+- **Colors**: Consistent with design system
+- **Animations**: Smooth transitions throughout`
   }
 }
 

@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Eye, Code2, Copy, AlertCircle, RefreshCw, FileCode, FileCode2, Folder, Loader2, Download } from 'lucide-react'
+import { Eye, Code2, Copy, AlertCircle, RefreshCw, FileCode, FileCode2, Folder, Loader2, Download, FileText, CheckSquare, Palette, Brain, Send, MessageCircle, ArrowDown } from 'lucide-react'
 import { useStore } from '../../store'
 import toast from 'react-hot-toast'
 import Prism from 'prismjs'
@@ -7,9 +7,12 @@ import 'prismjs/components/prism-javascript'
 import 'prismjs/components/prism-typescript'
 import 'prismjs/components/prism-jsx'
 import 'prismjs/components/prism-tsx'
+import ReactMarkdown from 'react-markdown'
 // Removed prism theme - using custom styles only
 import { ipc } from '../../lib/ipc'
-import type { GenerationProgress } from '../../types'
+import { IPC_CHANNELS } from '../../../electron/lib/ipc-channels'
+import type { GenerationProgress, ChatMessage } from '../../types'
+import { nanoid } from 'nanoid'
 
 // Custom styles for better syntax highlighting
 const syntaxStyles = `
@@ -223,6 +226,16 @@ export default function UiTab() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   
+  // UI Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [isWaitingForResponse, setIsWaitingForResponse] = useState(false)
+  const [showChat, setShowChat] = useState(false)
+  const [pendingEditInstructions, setPendingEditInstructions] = useState<string | undefined>(undefined)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+  const [isUserScrolling, setIsUserScrolling] = useState(false)
+  
   // Stop preview server when component unmounts or project changes
   useEffect(() => {
     return () => {
@@ -269,14 +282,14 @@ export default function UiTab() {
   }
 
   const handleRetryGeneration = async () => {
-    // Check if we have a project idea to regenerate
-    if (!currentProjectData?.idea) {
-      toast.error('No project idea found to regenerate')
+    // Check if we have a project ID to regenerate
+    if (!selectedProjectId) {
+      toast.error('No project selected')
       return
     }
 
     // Confirm with user before regenerating
-    const confirmed = window.confirm('This will regenerate all UI files. Are you sure you want to continue?')
+    const confirmed = window.confirm('This will regenerate only the UI files. Are you sure you want to continue?')
     if (!confirmed) return
 
     setGenerating(true)
@@ -286,20 +299,17 @@ export default function UiTab() {
     try {
       // Set up progress listener
       const unsubscribe = ipc.onGenerationProgress((progress: GenerationProgress) => {
-        console.log('Retry: Received progress update:', progress)
+        console.log('UI Regeneration: Received progress update:', progress)
         addProgress(progress)
       })
 
-      // Regenerate the project with existing idea and chat history
-      console.log('Retry: Regenerating project with idea:', currentProjectData.idea)
-      const result = await ipc.generateProject(
-        currentProjectData.idea, 
-        currentProjectData.chatHistory || []
-      )
-      console.log('Retry: Generation result:', result)
+      // Regenerate only the UI components
+      console.log('UI Regeneration: Regenerating UI for project:', selectedProjectId)
+      const result = await ipc.regenerateUI(selectedProjectId)
+      console.log('UI Regeneration: Result:', result)
 
-      if (result.success && result.data?.projectId) {
-        console.log('Retry: Project regenerated successfully')
+      if (result.success) {
+        console.log('UI Regeneration: UI regenerated successfully')
         toast.success('UI regenerated successfully!')
         
         // Play completion sound
@@ -308,27 +318,28 @@ export default function UiTab() {
         // Small delay to ensure files are written
         await new Promise(resolve => setTimeout(resolve, 100))
         
-        // Reload the project data to get new UI files
-        console.log('Retry: Loading updated project data for:', result.data.projectId)
-        const updatedProjectData = await ipc.loadProject(result.data.projectId)
-        console.log('Retry: Updated project data loaded:', updatedProjectData ? 'success' : 'failed')
-        
-        if (updatedProjectData) {
-          setProjectData(updatedProjectData)
+        // The result should already contain the updated project data
+        if (result.data) {
+          setProjectData(result.data)
           // Reset refresh key to force preview update
           setRefreshKey(prev => prev + 1)
         } else {
-          toast.error('Failed to load regenerated project data')
+          // Fallback: reload the project data
+          const updatedProjectData = await ipc.loadProject(selectedProjectId)
+          if (updatedProjectData) {
+            setProjectData(updatedProjectData)
+            setRefreshKey(prev => prev + 1)
+          }
         }
       } else {
-        console.log('Retry: Regeneration failed:', result.error)
+        console.log('UI Regeneration: Failed:', result.error)
         toast.error(result.error || 'Failed to regenerate UI')
       }
 
       // Clean up listener
       unsubscribe()
     } catch (error) {
-      console.error('Regeneration error:', error)
+      console.error('UI Regeneration error:', error)
       toast.error('An error occurred while regenerating the UI')
     } finally {
       setGenerating(false)
@@ -336,8 +347,8 @@ export default function UiTab() {
   }
 
   const handleSelectiveRegeneration = async (fileIssues: any[]) => {
-    if (!currentProjectData?.idea) {
-      toast.error('No project idea found to regenerate')
+    if (!selectedProjectId) {
+      toast.error('No project selected')
       return
     }
 
@@ -357,22 +368,19 @@ export default function UiTab() {
         addProgress(progress)
       })
 
-      // Extract component names from filenames (remove .tsx extension)
-      const componentNames = fileIssues.map(f => f.componentName || f.filename.replace('.tsx', ''))
+      // Extract component names from filenames (remove .js extension)
+      const componentNames = fileIssues.map(f => f.componentName || f.filename.replace('.js', ''))
       
       console.log('Selective: Regenerating components:', componentNames)
       
-      // TODO: This requires implementing selective regeneration in the backend
-      // For now, we'll fall back to full regeneration
-      const result = await ipc.generateProject(
-        currentProjectData.idea, 
-        currentProjectData.chatHistory || []
-      )
-      console.log('Selective: Generation result:', result)
+      // TODO: Implement selective regeneration in the backend to regenerate only specific components
+      // For now, we'll regenerate all UI components but keep PRD and checklist
+      const result = await ipc.regenerateUI(selectedProjectId)
+      console.log('Selective: Regeneration result:', result)
 
-      if (result.success && result.data?.projectId) {
+      if (result.success) {
         console.log('Selective: Files regenerated successfully')
-        toast.success(`Fixed ${componentNames.length} problematic file${componentNames.length !== 1 ? 's' : ''}!`)
+        toast.success(`Regenerated UI components!`)
         
         // Play completion sound
         ipc.playCompletionSound()
@@ -380,17 +388,18 @@ export default function UiTab() {
         // Small delay to ensure files are written
         await new Promise(resolve => setTimeout(resolve, 100))
         
-        // Reload the project data to get new UI files
-        console.log('Selective: Loading updated project data for:', result.data.projectId)
-        const updatedProjectData = await ipc.loadProject(result.data.projectId)
-        console.log('Selective: Updated project data loaded:', updatedProjectData ? 'success' : 'failed')
-        
-        if (updatedProjectData) {
-          setProjectData(updatedProjectData)
+        // The result should already contain the updated project data
+        if (result.data) {
+          setProjectData(result.data)
           // Reset refresh key to force preview update
           setRefreshKey(prev => prev + 1)
         } else {
-          toast.error('Failed to load regenerated project data')
+          // Fallback: reload the project data
+          const updatedProjectData = await ipc.loadProject(selectedProjectId)
+          if (updatedProjectData) {
+            setProjectData(updatedProjectData)
+            setRefreshKey(prev => prev + 1)
+          }
         }
       } else {
         console.log('Selective: Regeneration failed:', result.error)
@@ -498,6 +507,150 @@ export default function UiTab() {
     )
   }
 
+  // UI Chat handlers
+  const handleScroll = () => {
+    if (!chatContainerRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current
+    const atBottom = scrollHeight - scrollTop - clientHeight < 50
+    setIsUserScrolling(!atBottom)
+  }
+
+  useEffect(() => {
+    if (!isUserScrolling && chatContainerRef.current) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [chatMessages, isUserScrolling])
+
+  const handleSendChatMessage = async () => {
+    if (!chatInput.trim() || isWaitingForResponse) return
+
+    const userMessage: ChatMessage = {
+      id: nanoid(),
+      role: 'user',
+      content: chatInput,
+      timestamp: new Date().toISOString()
+    }
+    
+    setChatMessages(prev => [...prev, userMessage])
+    const messageContent = chatInput
+    setChatInput('')
+    setIsWaitingForResponse(true)
+    setIsUserScrolling(false)
+
+    try {
+      // Get current UI context
+      const componentNames = currentProjectData?.uiFiles?.map(f => f.filename.replace('.js', '')) || []
+      const projectContext = {
+        projectIdea: currentProjectData?.idea || 'Unknown project',
+        components: componentNames,
+        uiStrategy: currentProjectData?.uiStrategy
+      }
+
+      // Create a new message that we'll update as chunks arrive
+      const assistantMessageId = nanoid()
+      let accumulatedContent = ''
+      
+      // Set up chunk listener
+      const unsubscribeChunk = ipc.on(IPC_CHANNELS.UI_CHAT_STREAM_CHUNK, (data: { content: string }) => {
+        accumulatedContent += data.content
+        setChatMessages(prev => {
+          const existing = prev.find(msg => msg.id === assistantMessageId)
+          if (existing) {
+            return prev.map(msg => 
+              msg.id === assistantMessageId 
+                ? { ...msg, content: accumulatedContent }
+                : msg
+            )
+          } else {
+            return [...prev, {
+              id: assistantMessageId,
+              role: 'assistant' as const,
+              content: accumulatedContent,
+              timestamp: new Date().toISOString()
+            }]
+          }
+        })
+      })
+      
+      // Set up end listener
+      const unsubscribeEnd = ipc.on(IPC_CHANNELS.UI_CHAT_STREAM_END, () => {
+        setIsWaitingForResponse(false)
+        unsubscribeChunk()
+        unsubscribeEnd()
+      })
+
+      // Send message to backend
+      const result = await ipc.sendUIChatMessage(messageContent, chatMessages, projectContext)
+      
+      if (result.success && result.data) {
+        if (result.data.isEditRequest && result.data.editInstructions) {
+          // Store the edit instructions for when user clicks regenerate
+          setPendingEditInstructions(result.data.editInstructions)
+        }
+      }
+    } catch (error) {
+      console.error('Error sending UI chat message:', error)
+      toast.error('Failed to send message')
+      setIsWaitingForResponse(false)
+    }
+  }
+
+  const handleChatRegenerate = async () => {
+    if (!pendingEditInstructions || !selectedProjectId) return
+    
+    setGenerating(true)
+    clearProgress()
+    toast('Regenerating UI with your requested changes...')
+
+    try {
+      const unsubscribe = ipc.onGenerationProgress((progress: GenerationProgress) => {
+        console.log('UI Chat Regeneration: Received progress update:', progress)
+        addProgress(progress)
+      })
+
+      const result = await ipc.regenerateUI(selectedProjectId, pendingEditInstructions)
+      
+      if (result.success) {
+        toast.success('UI regenerated with your changes!')
+        ipc.playCompletionSound()
+        
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        if (result.data) {
+          setProjectData(result.data)
+          setRefreshKey(prev => prev + 1)
+        } else {
+          const updatedProjectData = await ipc.loadProject(selectedProjectId)
+          if (updatedProjectData) {
+            setProjectData(updatedProjectData)
+            setRefreshKey(prev => prev + 1)
+          }
+        }
+        
+        // Clear pending instructions after successful regeneration
+        setPendingEditInstructions(undefined)
+        
+        // Add a system message confirming the regeneration
+        const confirmMessage: ChatMessage = {
+          id: nanoid(),
+          role: 'assistant',
+          content: '✨ UI has been regenerated with your requested changes!',
+          timestamp: new Date().toISOString()
+        }
+        setChatMessages(prev => [...prev, confirmMessage])
+      } else {
+        toast.error(result.error || 'Failed to regenerate UI')
+      }
+
+      unsubscribe()
+    } catch (error) {
+      console.error('Chat regeneration error:', error)
+      toast.error('An error occurred while regenerating the UI')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   return (
     <div className="h-full overflow-y-auto">
       {currentProjectData.uiStrategy === 'v0' ? (
@@ -554,10 +707,22 @@ export default function UiTab() {
               
               <div className="ml-auto flex items-center gap-2">
                 <button
+                  onClick={() => setShowChat(!showChat)}
+                  className={`flex items-center gap-2 px-3 py-1 text-sm rounded-lg transition-colors ${
+                    showChat 
+                      ? 'bg-blue-500 text-white hover:bg-blue-600' 
+                      : 'bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-500'
+                  }`}
+                  title="Chat with AI about your UI"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  Chat
+                </button>
+                <button
                   onClick={handleRetryGeneration}
                   disabled={isGenerating}
                   className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-100 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-                  title="Regenerate UI with new variations"
+                  title="Regenerate only UI components (keeps PRD and checklist)"
                 >
                   {isGenerating ? (
                     <>
@@ -583,8 +748,146 @@ export default function UiTab() {
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 overflow-hidden">
-            {uiViewMode === 'preview' ? (
+          <div className="flex-1 overflow-hidden flex">
+            {/* Chat Panel */}
+            {showChat && (
+              <div className="w-96 border-r border-gray-200 dark:border-gray-700 flex flex-col bg-gray-50 dark:bg-gray-900">
+                <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3 bg-white dark:bg-gray-800">
+                  <h3 className="font-semibold">UI Assistant</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Ask questions or request changes to your UI</p>
+                </div>
+                
+                {/* Chat messages */}
+                <div 
+                  ref={chatContainerRef}
+                  className="flex-1 overflow-y-auto p-4"
+                  onScroll={handleScroll}
+                >
+                  <div className="space-y-4">
+                    {chatMessages.length === 0 && (
+                      <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+                        <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p className="text-sm">Start a conversation about your UI</p>
+                        <p className="text-xs mt-2">Ask questions or request specific changes</p>
+                      </div>
+                    )}
+                    
+                    {chatMessages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className={`max-w-[80%] px-4 py-2 rounded-lg ${
+                            message.role === 'user'
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700'
+                          }`}
+                        >
+                          {message.role === 'assistant' ? (
+                            <div className="prose prose-sm dark:prose-invert max-w-none">
+                              <ReactMarkdown
+                                components={{
+                                  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                                  ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+                                  ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
+                                  li: ({ children }) => <li className="mb-1">{children}</li>,
+                                  code: ({ children, ...props }) => {
+                                    const match = /language-(\w+)/.exec(props.className || '')
+                                    return match ? (
+                                      <code className="block p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm overflow-x-auto">{children}</code>
+                                    ) : (
+                                      <code className="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-sm">{children}</code>
+                                    )
+                                  },
+                                }}
+                              >
+                                {message.content}
+                              </ReactMarkdown>
+                            </div>
+                          ) : (
+                            <div className="text-sm">{message.content}</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {isWaitingForResponse && (
+                      <div className="flex justify-start">
+                        <div className="bg-white dark:bg-gray-800 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div ref={chatEndRef} />
+                  </div>
+                  
+                  {/* New messages indicator */}
+                  {isUserScrolling && isWaitingForResponse && (
+                    <button
+                      onClick={() => {
+                        setIsUserScrolling(false)
+                        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      }}
+                      className="absolute bottom-20 right-4 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-full shadow-lg text-sm flex items-center gap-1 transition-all duration-200"
+                    >
+                      <ArrowDown className="w-3 h-3" />
+                      New messages
+                    </button>
+                  )}
+                </div>
+                
+                {/* Chat input */}
+                <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800">
+                  {pendingEditInstructions && (
+                    <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">Ready to apply your changes!</p>
+                      <button
+                        onClick={handleChatRegenerate}
+                        disabled={isGenerating}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg transition-colors text-sm font-medium"
+                      >
+                        {isGenerating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Applying Changes...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-4 h-4" />
+                            Apply Changes
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                  
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSendChatMessage()}
+                      placeholder="Ask about UI or request changes..."
+                      className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      disabled={isWaitingForResponse}
+                    />
+                    <button
+                      onClick={handleSendChatMessage}
+                      disabled={!chatInput.trim() || isWaitingForResponse}
+                      className="px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Main Content */}
+            <div className="flex-1 overflow-hidden">
+              {uiViewMode === 'preview' ? (
               <div className="h-full overflow-y-auto">
                 {hasCodeIssues || showRawCode ? (
                   <div className="p-6 space-y-4">
@@ -781,31 +1084,10 @@ export default function UiTab() {
                 )}
               </div>
             )}
+            </div>
           </div>
           
-          {/* Progress Display during regeneration */}
-          {isGenerating && (
-            <div className="border-t border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900 flex-shrink-0">
-              <h3 className="font-semibold mb-2">Regeneration Progress</h3>
-              <div className="space-y-2 max-h-32 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600">
-                {generationProgress.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Starting regeneration...</p>
-                ) : (
-                  generationProgress.map((progress, index) => (
-                    <div key={`${progress.node}-${index}`} className="flex items-center gap-2 text-sm py-1">
-                      {progress.status === 'in-progress' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
-                      {progress.status === 'success' && <span className="text-green-600">✓</span>}
-                      {progress.status === 'error' && <span className="text-red-600">✗</span>}
-                      <span className={progress.status === 'success' ? 'text-gray-600 dark:text-gray-400' : ''}>
-                        {progress.node}
-                      </span>
-                      {progress.message && <span className="text-gray-500 dark:text-gray-400">- {progress.message}</span>}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
+
         </div>
       )}
     </div>

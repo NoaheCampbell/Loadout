@@ -1,25 +1,31 @@
 export const IPC_CHANNELS = {
   // Project generation
-  GENERATE_PROJECT: 'generate-project',
+  GENERATE_PROJECT: 'generation:generate-project',
   CANCEL_GENERATION: 'cancel-generation',
-  GENERATION_PROGRESS: 'generation-progress',
+  GENERATION_PROGRESS: 'generation:progress',
+  REGENERATE_UI: 'generation:regenerate-ui',
   
   // Project management
-  LOAD_PROJECT: 'load-project',
-  LIST_PROJECTS: 'list-projects',
-  DELETE_PROJECT: 'delete-project',
+  LOAD_PROJECT: 'storage:load-project',
+  LIST_PROJECTS: 'storage:list-projects',
+  DELETE_PROJECT: 'storage:delete-project',
   EXPORT_PROJECT: 'export-project',
   
   // Chat
-  CHAT_MESSAGE: 'chat-message',
+  CHAT_MESSAGE: 'chat:message',
   CHAT_RESPONSE: 'chat-response',
-  CHAT_STREAM_CHUNK: 'chat-stream-chunk',
-  CHAT_STREAM_END: 'chat-stream-end',
-  START_PROJECT_CHAT: 'start-project-chat',
+  CHAT_STREAM_CHUNK: 'chat:stream-chunk',
+  CHAT_STREAM_END: 'chat:stream-end',
+  START_PROJECT_CHAT: 'chat:start-project',
+  
+  // UI Chat
+  UI_CHAT_MESSAGE: 'ui-chat:message',
+  UI_CHAT_STREAM_CHUNK: 'ui-chat:stream-chunk',
+  UI_CHAT_STREAM_END: 'ui-chat:stream-end',
   
   // Storage
   GET_APP_PATH: 'get-app-path',
-  ENSURE_STORAGE: 'ensure-storage',
+  ENSURE_STORAGE: 'storage:ensure',
   
   // UI
   SHOW_ERROR: 'show-error',
@@ -60,7 +66,7 @@ export const IPC_CHANNELS = {
   // Preview server channels
   PREVIEW_START: 'preview:start',
   PREVIEW_STOP: 'preview:stop',
-  PREVIEW_GET_URL: 'preview:getUrl',
+  PREVIEW_GET_URL: 'preview:get-url',
 } as const;
 
 export type IpcChannels = typeof IPC_CHANNELS[keyof typeof IPC_CHANNELS]; 

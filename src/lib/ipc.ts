@@ -148,5 +148,31 @@ export const ipc = {
 
   // Sound notifications
   playCompletionSound,
-  requestNotificationPermission
+  requestNotificationPermission,
+
+  // Regenerate UI only for existing project
+  async regenerateUI(projectId: string, editInstructions?: string): Promise<{ 
+    success: boolean; 
+    error?: string; 
+    data?: ProjectFiles | null 
+  }> {
+    return window.ipcRenderer.invoke(IPC_CHANNELS.REGENERATE_UI, { projectId, editInstructions });
+  },
+
+  // UI Chat
+  async sendUIChatMessage(content: string, chatHistory: ChatMessage[], projectContext: {
+    projectIdea: string;
+    components?: string[];
+    uiStrategy?: string;
+  }): Promise<{
+    success: boolean;
+    error?: string;
+    data?: {
+      isEditRequest: boolean;
+      editInstructions?: string;
+      fullResponse: string;
+    };
+  }> {
+    return window.ipcRenderer.invoke(IPC_CHANNELS.UI_CHAT_MESSAGE, { content, chatHistory, projectContext });
+  }
 }; 
