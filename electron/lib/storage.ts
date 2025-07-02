@@ -453,7 +453,7 @@ export async function getApiKey(): Promise<string | null> {
     return decrypted
   } catch (error) {
     // File doesn't exist or other error
-    console.log('No stored API key found')
+    // Silently return null - this is expected when using new provider config
     return null
   }
 }
@@ -462,6 +462,90 @@ export async function deleteApiKey(): Promise<void> {
   try {
     await fs.unlink(API_KEY_FILE)
   } catch (error) {
-    console.log('No API key to delete')
+    // Silently ignore - no API key to delete
+  }
+}
+
+// Multi-provider API key storage
+const PROVIDER_CONFIG_FILE = path.join(app.getPath('userData'), 'provider-config.enc')
+
+export interface ProviderConfig {
+  selectedProvider: 'openai' | 'anthropic' | 'ollama'
+  providers: {
+    openai?: {
+      apiKey: string
+      model?: string
+    }
+    anthropic?: {
+      apiKey: string
+      model?: string
+    }
+    ollama?: {
+      model: string
+      baseUrl?: string
+    }
+  }
+}
+
+export async function saveProviderConfig(config: ProviderConfig): Promise<void> {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Encryption is not available on this system')
+    }
+    
+    const jsonString = JSON.stringify(config)
+    const encrypted = safeStorage.encryptString(jsonString)
+    await fs.writeFile(PROVIDER_CONFIG_FILE, encrypted)
+  } catch (error) {
+    console.error('Error saving provider config:', error)
+    throw error
+  }
+}
+
+export async function getProviderConfig(): Promise<ProviderConfig | null> {
+  try {
+    const encryptedData = await fs.readFile(PROVIDER_CONFIG_FILE)
+    
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Encryption is not available on this system')
+    }
+    
+    const decrypted = safeStorage.decryptString(encryptedData)
+    return JSON.parse(decrypted) as ProviderConfig
+  } catch (error) {
+    // File doesn't exist or other error - this is expected on first run
+    return null
+  }
+}
+
+export async function deleteProviderConfig(): Promise<void> {
+  try {
+    await fs.unlink(PROVIDER_CONFIG_FILE)
+  } catch (error) {
+    console.log('No provider config to delete')
+  }
+}
+
+// Migration function to convert old API key to new format
+export async function migrateApiKeyToProviderConfig(): Promise<void> {
+  try {
+    const oldApiKey = await getApiKey()
+    if (oldApiKey && !(await getProviderConfig())) {
+      // Migrate old API key to new format
+      await saveProviderConfig({
+        selectedProvider: 'openai',
+        providers: {
+          openai: {
+            apiKey: oldApiKey,
+            model: 'gpt-4'
+          }
+        }
+      })
+      // Delete old API key file after successful migration
+      await deleteApiKey()
+      console.log('Successfully migrated API key to new provider config')
+    }
+  } catch (error) {
+    console.error('Error migrating API key:', error)
   }
 } 

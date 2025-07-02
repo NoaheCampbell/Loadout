@@ -3,6 +3,7 @@ import { Send, Loader2, MessageCircle, ArrowDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { nanoid } from 'nanoid'
 import { IPC_CHANNELS } from '../../electron/lib/ipc-channels'
+import ModelSelector from './ModelSelector'
 
 interface ChatMessage {
   id: string
@@ -29,6 +30,19 @@ export default function ChatWindow() {
     
     // Notify that we're ready to receive messages
     window.ipcRenderer.send('chat-window-ready')
+  }, [])
+
+  // Listen for open settings event from ModelSelector
+  useEffect(() => {
+    const handleOpenSettings = () => {
+      // Send message to main window to open settings
+      window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
+        type: 'open-settings'
+      })
+    }
+    
+    window.addEventListener('open-settings', handleOpenSettings)
+    return () => window.removeEventListener('open-settings', handleOpenSettings)
   }, [])
 
   // Listen for initial sync data and messages from main window
@@ -133,9 +147,14 @@ export default function ChatWindow() {
         className="border-b border-gray-200 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-900"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <div className="text-center">
-          <h3 className="font-semibold">UI Assistant</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Ask questions or request changes to your UI</p>
+        <div className="flex items-center justify-between">
+          <div className="text-center flex-1">
+            <h3 className="font-semibold">UI Assistant</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">Ask questions or request changes to your UI</p>
+          </div>
+          <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            <ModelSelector variant="compact" />
+          </div>
         </div>
       </div>
 

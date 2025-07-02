@@ -14,6 +14,7 @@ import type { GenerationProgress, ChatMessage } from '../../types'
 import { nanoid } from 'nanoid'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
+import ModelSelector from '../ModelSelector'
 
 // Custom styles for better syntax highlighting
 const syntaxStyles = `
@@ -377,6 +378,9 @@ export default function UiTab() {
         // If we're receiving a message from chat window, it must be open
         setShowChat(true)
         handleSendChatMessageFromWindow(data.message)
+      } else if (data.type === 'open-settings') {
+        // Open settings modal when requested from chat window
+        window.dispatchEvent(new CustomEvent('open-settings'))
       }
     }
     
@@ -830,6 +834,8 @@ export default function UiTab() {
               </button>
               
               <div className="ml-auto flex items-center gap-2">
+                <ModelSelector />
+                <div className="w-px h-6 bg-gray-300 dark:bg-gray-600" />
                 <button
                   onClick={() => showChat ? closeChatWindow() : openChatWindow()}
                   className={`flex items-center gap-2 px-3 py-1 text-sm rounded-lg transition-colors ${

@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { ChatMessage } from '../../types'
 import { nanoid } from 'nanoid'
 import ReactMarkdown from 'react-markdown'
+import ModelSelector from '../ModelSelector'
 
 interface IdeaTabProps {
   isNewProject?: boolean
@@ -276,13 +277,16 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
       <div className="h-full overflow-y-auto">
         <div className="max-w-4xl mx-auto p-8">
           <div className="space-y-6">
-            <div>
-              <h1 className="text-3xl font-bold mb-2">
-                {isNewProject ? "What React app do you want to build?" : "React App Idea"}
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                Describe your React application in a few sentences. Our AI will help you refine it before generating the complete React component structure.
-              </p>
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-3xl font-bold mb-2">
+                  {isNewProject ? "What React app do you want to build?" : "React App Idea"}
+                </h1>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Describe your React application in a few sentences. Our AI will help you refine it before generating the complete React component structure.
+                </p>
+              </div>
+              <ModelSelector />
             </div>
 
             <div>
@@ -323,6 +327,7 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
               Chat with AI to clarify and expand your project concept
             </p>
           </div>
+          <ModelSelector />
         </div>
       </div>
 

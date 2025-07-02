@@ -113,4 +113,22 @@ export interface ProjectFiles {
   uiFiles?: UIFile[];  // New: multiple files
   uiValidationIssues?: FileValidationIssues[];  // Validation issues for problematic files
   chatHistory?: ChatMessage[];
+}
+
+export interface ProviderConfig {
+  selectedProvider: 'openai' | 'anthropic' | 'ollama'
+  providers: {
+    openai?: {
+      apiKey: string
+      model?: string
+    }
+    anthropic?: {
+      apiKey: string
+      model?: string
+    }
+    ollama?: {
+      model: string
+      baseUrl?: string
+    }
+  }
 } 

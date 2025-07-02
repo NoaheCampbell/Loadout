@@ -80,6 +80,14 @@ export const IPC_CHANNELS = {
   GET_API_KEY: 'get-api-key',
   DELETE_API_KEY: 'delete-api-key',
   CHECK_API_KEY: 'check-api-key',
+  
+  // Provider Configuration
+  SAVE_PROVIDER_CONFIG: 'save-provider-config',
+  GET_PROVIDER_CONFIG: 'get-provider-config',
+  DELETE_PROVIDER_CONFIG: 'delete-provider-config',
+  CHECK_PROVIDER_CONFIG: 'check-provider-config',
+  MIGRATE_API_KEY: 'migrate-api-key',
+  GET_OLLAMA_MODELS: 'get-ollama-models',
 } as const;
 
 export type IpcChannels = typeof IPC_CHANNELS[keyof typeof IPC_CHANNELS]; 

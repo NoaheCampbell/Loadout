@@ -37,26 +37,36 @@ function App() {
     document.documentElement.classList.toggle('dark', theme === 'dark')
   }, [theme])
 
-  // Check API key on startup
+  // Check provider configuration on startup
   useEffect(() => {
     if (currentRoute === 'main') {
-      const checkApiKey = async () => {
-        const hasKey = await ipc.checkApiKey()
-        setHasApiKey(hasKey)
+      const checkProviderConfig = async () => {
+        const hasConfig = await ipc.checkProviderConfig()
+        setHasApiKey(hasConfig)
         
-        if (!hasKey) {
+        if (!hasConfig) {
           // Show a toast after a short delay to let the app load
           setTimeout(() => {
-            toast.error('Please set your OpenAI API key in Settings', {
+            toast.error('Please configure an AI provider in Settings', {
               duration: 6000,
               icon: '🔑'
             })
           }, 1000)
         }
       }
-      checkApiKey()
+      checkProviderConfig()
     }
   }, [currentRoute])
+
+  // Listen for open settings event from ModelSelector
+  useEffect(() => {
+    const handleOpenSettings = () => {
+      setShowSettings(true)
+    }
+    
+    window.addEventListener('open-settings', handleOpenSettings)
+    return () => window.removeEventListener('open-settings', handleOpenSettings)
+  }, [])
 
   // Load projects on mount (only for main app)
   useEffect(() => {

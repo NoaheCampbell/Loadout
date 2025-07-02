@@ -511,6 +511,35 @@ ipcMain.handle('workflow:visualize', async () => {
     return !!apiKey
   })
 
+  // Provider Configuration Management
+  ipcMain.handle(IPC_CHANNELS.SAVE_PROVIDER_CONFIG, async (_event, config) => {
+    const { saveProviderConfig } = await import('../lib/storage')
+    await saveProviderConfig(config)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_PROVIDER_CONFIG, async () => {
+    const { getProviderConfig, migrateApiKeyToProviderConfig } = await import('../lib/storage')
+    await migrateApiKeyToProviderConfig()
+    return await getProviderConfig()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DELETE_PROVIDER_CONFIG, async () => {
+    const { deleteProviderConfig } = await import('../lib/storage')
+    await deleteProviderConfig()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CHECK_PROVIDER_CONFIG, async () => {
+    const { getProviderConfig, migrateApiKeyToProviderConfig } = await import('../lib/storage')
+    await migrateApiKeyToProviderConfig()
+    const config = await getProviderConfig()
+    return !!config
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_OLLAMA_MODELS, async () => {
+    const { getOllamaModels } = await import('../lib/chat-providers')
+    return await getOllamaModels()
+  })
+
 function setupIpcHandlers(win: BrowserWindow) {
   const handleChatMessage = async (event: Electron.IpcMainInvokeEvent, message: string, chatHistory: any[]) => {
     try {

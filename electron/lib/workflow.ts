@@ -16,6 +16,7 @@ import type {
 } from '../../src/types'
 import { storage } from './storage'
 import { getApiKey } from './storage'
+import { getChatModel } from './chat-providers'
 
 // Define the workflow state using LangGraph Annotation
 const WorkflowStateAnnotation = Annotation.Root({
@@ -54,23 +55,9 @@ let codeLLM: ChatOpenAI | null = null
 
 // Function to initialize LLMs with current API key
 async function initializeLLMs() {
-  const apiKey = await getApiKey()
-  
-  if (!apiKey) {
-    throw new Error('OpenAI API key not configured. Please set your API key in settings.')
-  }
-  
-  llm = new ChatOpenAI({
-    modelName: 'gpt-4',
-    temperature: 0.7,
-    openAIApiKey: apiKey,
-  })
-
-  codeLLM = new ChatOpenAI({
-    modelName: 'gpt-4',
-    temperature: 0.5,
-    openAIApiKey: apiKey,
-  })
+  // Use the new provider system
+  llm = await getChatModel({ temperature: 0.7, streaming: false }) as any
+  codeLLM = await getChatModel({ temperature: 0.5, streaming: false }) as any
 }
 
 // Helper functions to get LLMs with null checking

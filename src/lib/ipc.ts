@@ -181,4 +181,25 @@ export const ipc = {
   saveApiKey: (apiKey: string) => ipc.invoke(IPC_CHANNELS.SAVE_API_KEY, apiKey),
   checkApiKey: () => ipc.invoke(IPC_CHANNELS.CHECK_API_KEY),
   deleteApiKey: () => ipc.invoke(IPC_CHANNELS.DELETE_API_KEY),
+
+  // Provider Configuration
+  async saveProviderConfig(config: any): Promise<void> {
+    return window.ipcRenderer.invoke(IPC_CHANNELS.SAVE_PROVIDER_CONFIG, config);
+  },
+
+  async getProviderConfig(): Promise<any | null> {
+    return window.ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDER_CONFIG);
+  },
+
+  async deleteProviderConfig(): Promise<void> {
+    return window.ipcRenderer.invoke(IPC_CHANNELS.DELETE_PROVIDER_CONFIG);
+  },
+
+  async checkProviderConfig(): Promise<boolean> {
+    return window.ipcRenderer.invoke(IPC_CHANNELS.CHECK_PROVIDER_CONFIG);
+  },
+
+  async getOllamaModels(): Promise<string[]> {
+    return window.ipcRenderer.invoke(IPC_CHANNELS.GET_OLLAMA_MODELS);
+  }
 }; 
