@@ -67,6 +67,8 @@ async function createWindow() {
       // contextIsolation: false,
     },
   })
+  
+
 
   // Configure CSP to allow loading scripts from CDNs for UI preview
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
@@ -196,15 +198,27 @@ function createChatWindow() {
     height: 500,
     frame: false,
     titleBarStyle: 'hiddenInset',
-    alwaysOnTop: true,
     resizable: true,
     minimizable: false,
     maximizable: false,
+    parent: win || undefined,
+    modal: false,
+    show: false,
     webPreferences: {
       preload,
       nodeIntegration: false,
       contextIsolation: true
     }
+  })
+  
+  // Ensure window buttons are visible on macOS
+  if (process.platform === 'darwin') {
+    chatWin.setWindowButtonVisibility(true)
+  }
+  
+  // Show window after setup
+  chatWin.once('ready-to-show', () => {
+    chatWin.show()
   })
 
   // Load chat window HTML
@@ -221,6 +235,8 @@ function createChatWindow() {
       win.webContents.send('chat-window-closed')
     }
   })
+  
+
 }
 
 ipcMain.on(IPC_CHANNELS.OPEN_CHAT_WINDOW, (event, data) => {

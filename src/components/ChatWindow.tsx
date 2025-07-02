@@ -97,22 +97,13 @@ export default function ChatWindow() {
     <div className="h-screen flex flex-col bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
       {/* Header - Draggable */}
       <div 
-        className="border-b border-gray-200 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-900 flex items-center justify-between"
+        className="border-b border-gray-200 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-900"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <div className="flex-1">
+        <div className="text-center">
           <h3 className="font-semibold">UI Assistant</h3>
           <p className="text-sm text-gray-600 dark:text-gray-400">Ask questions or request changes to your UI</p>
         </div>
-        <button
-          onClick={() => window.ipcRenderer.send(IPC_CHANNELS.CLOSE_CHAT_WINDOW)}
-          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
       </div>
 
       {/* Messages */}
