@@ -175,5 +175,10 @@ export const ipc = {
     };
   }> {
     return window.ipcRenderer.invoke(IPC_CHANNELS.UI_CHAT_MESSAGE, { content, chatHistory, projectContext });
-  }
+  },
+  
+  // API Key Management
+  saveApiKey: (apiKey: string) => ipc.invoke(IPC_CHANNELS.SAVE_API_KEY, apiKey),
+  checkApiKey: () => ipc.invoke(IPC_CHANNELS.CHECK_API_KEY),
+  deleteApiKey: () => ipc.invoke(IPC_CHANNELS.DELETE_API_KEY),
 }; 

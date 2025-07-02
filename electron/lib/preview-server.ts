@@ -17,13 +17,23 @@ export async function startPreviewServer(files: UIFile[]): Promise<{ port: numbe
 
   // Create HTTP server
   server = http.createServer(async (req, res) => {
+    // Set permissive headers for all responses
+    const headers: Record<string, string> = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': '*',
+      'Access-Control-Allow-Headers': '*'
+    }
+    
     try {
       const url = new URL(req.url || '/', `http://localhost:${currentPort}`)
       
       if (url.pathname === '/' || url.pathname === '/index.html') {
         // Serve the main HTML file
         const html = generateIndexHtml(files)
-        res.writeHead(200, { 'Content-Type': 'text/html' })
+        res.writeHead(200, { 
+          'Content-Type': 'text/html',
+          ...headers
+        })
         res.end(html)
       } else if (url.pathname.startsWith('/components/')) {
         // Serve component files
@@ -31,19 +41,22 @@ export async function startPreviewServer(files: UIFile[]): Promise<{ port: numbe
         const file = files.find(f => f.filename === filename)
         
         if (file) {
-          res.writeHead(200, { 'Content-Type': 'application/javascript' })
+          res.writeHead(200, { 
+            'Content-Type': 'application/javascript',
+            ...headers
+          })
           res.end(file.content)
         } else {
-          res.writeHead(404)
+          res.writeHead(404, headers)
           res.end('Component not found')
         }
       } else {
-        res.writeHead(404)
+        res.writeHead(404, headers)
         res.end('Not found')
       }
     } catch (error) {
       console.error('Server error:', error)
-      res.writeHead(500)
+      res.writeHead(500, headers)
       res.end('Internal server error')
     }
   })

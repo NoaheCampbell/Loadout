@@ -15,6 +15,7 @@ import type {
   FileValidationIssues
 } from '../../src/types'
 import { storage } from './storage'
+import { getApiKey } from './storage'
 
 // Define the workflow state using LangGraph Annotation
 const WorkflowStateAnnotation = Annotation.Root({
@@ -47,16 +48,45 @@ const WorkflowStateAnnotation = Annotation.Root({
 // Type alias for the state
 type WorkflowState = typeof WorkflowStateAnnotation.State
 
-// Initialize LLM
-const llm = new ChatOpenAI({
-  modelName: 'gpt-4',
-  temperature: 0.7,
-})
+// Initialize LLM - will be set with API key when workflow runs
+let llm: ChatOpenAI | null = null
+let codeLLM: ChatOpenAI | null = null
 
-const codeLLM = new ChatOpenAI({
-  modelName: 'gpt-4',
-  temperature: 0.5,
-})
+// Function to initialize LLMs with current API key
+async function initializeLLMs() {
+  const apiKey = await getApiKey()
+  
+  if (!apiKey) {
+    throw new Error('OpenAI API key not configured. Please set your API key in settings.')
+  }
+  
+  llm = new ChatOpenAI({
+    modelName: 'gpt-4',
+    temperature: 0.7,
+    openAIApiKey: apiKey,
+  })
+
+  codeLLM = new ChatOpenAI({
+    modelName: 'gpt-4',
+    temperature: 0.5,
+    openAIApiKey: apiKey,
+  })
+}
+
+// Helper functions to get LLMs with null checking
+function getLLM(): ChatOpenAI {
+  if (!llm) {
+    throw new Error('LLM not initialized. Call initializeLLMs() first.')
+  }
+  return llm
+}
+
+function getCodeLLM(): ChatOpenAI {
+  if (!codeLLM) {
+    throw new Error('Code LLM not initialized. Call initializeLLMs() first.')
+  }
+  return codeLLM
+}
 
 // Progress callback type with support for hierarchical nodes
 type ProgressCallback = (
@@ -498,6 +528,15 @@ export async function runWorkflow(
   onProgress: ProgressCallback,
   chatHistory?: ChatMessage[]
 ): Promise<{ success: boolean; projectId?: string; error?: string }> {
+  // Initialize LLMs with API key
+  try {
+    await initializeLLMs()
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to initialize AI models'
+    }
+  }
   const projectId = nanoid()
   console.log('🦜️🔗 Starting LangGraph workflow for project:', projectId)
   
@@ -550,6 +589,15 @@ export async function regenerateUI(
   onProgress: ProgressCallback,
   editInstructions?: string
 ): Promise<{ success: boolean; error?: string }> {
+  // Initialize LLMs with API key
+  try {
+    await initializeLLMs()
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to initialize AI models'
+    }
+  }
   console.log('🎨 Regenerating UI for project:', projectId)
   
   try {
@@ -644,7 +692,7 @@ function extractTitle(idea: string): string {
 
 // Process idea into structured format for React app
 async function processIdea(idea: string): Promise<ProjectIdea> {
-  const response = await llm.invoke([
+  const response = await getLLM().invoke([
     new SystemMessage('Generate a clear title and description for this React project idea.'),
     new HumanMessage(`Create a React web application for: ${idea}`),
   ])
@@ -777,7 +825,7 @@ CRITICAL:
 - Use \\n for line breaks within strings
 - Make the content specific to "${projectIdea.title}" but keep requirements high-level`
 
-    const response = await llm.invoke([
+    const response = await getLLM().invoke([
       new SystemMessage('You are an expert product manager creating a comprehensive PRD. Return valid JSON that preserves markdown formatting with checkboxes. Keep requirements at a high level without sub-items or nested checkboxes.'),
       new HumanMessage(prompt),
     ])
@@ -856,7 +904,7 @@ Format as JSON:
 }
 `
 
-    const response = await llm.invoke([
+    const response = await getLLM().invoke([
       new SystemMessage('You are a technical architect documenting project decisions. Return only valid JSON.'),
       new HumanMessage(prompt),
     ])
@@ -953,7 +1001,7 @@ Format as JSON array where each item represents a line of text with proper inden
 
 Generate a COMPLETE and DETAILED checklist for all 7 phases.`
 
-  const response = await llm.invoke([
+  const response = await getLLM().invoke([
     new SystemMessage('You are an expert technical architect creating a comprehensive phase-based development checklist. Return only valid JSON array. Be extremely detailed and specific to the project. Include ALL 7 phases with multiple features and sub-features for each.'),
     new HumanMessage(prompt),
   ])
@@ -1128,7 +1176,7 @@ Generate a UI plan that will result in a STUNNING, MODERN web application.
 Format as JSON with this exact structure.
 `
 
-  const response = await llm.invoke([
+  const response = await getLLM().invoke([
     new SystemMessage(`You are a UI/UX architect creating modern, sophisticated design plans. 
     Focus on creating BEAUTIFUL, CONTEMPORARY designs that would impress in a portfolio.
     Use modern color palettes, sophisticated typography, and cutting-edge UI patterns.
@@ -1213,7 +1261,7 @@ Format as JSON with sections for:
 - Styling requirements
 `
 
-  const response = await llm.invoke([
+  const response = await getLLM().invoke([
     new SystemMessage('You are creating a prompt for v0.dev. Return a JSON object with prompt sections.'),
     new HumanMessage(prompt),
   ])
@@ -1690,7 +1738,7 @@ Output ONLY the component code, no explanations.`
     ? `${systemMessage}\n\n=== UI BUILD GUIDELINES ===\n${uiGuidelines}\n\nFOLLOW THESE GUIDELINES EXACTLY when generating the component.`
     : systemMessage
   
-  const response = await codeLLM.invoke([
+  const response = await getCodeLLM().invoke([
     new SystemMessage(enhancedSystemMessage),
     new HumanMessage(prompt)
   ])
@@ -2167,7 +2215,7 @@ const ${componentName} = () => {
 
 window.${componentName} = ${componentName};`
 
-  const response = await codeLLM.invoke([
+  const response = await getCodeLLM().invoke([
     new SystemMessage(`You are a React expert creating BEAUTIFUL page components for a modern SaaS application.
     
 CRITICAL RULES:
@@ -2972,7 +3020,7 @@ window.App = App;
 IMPORTANT: Return ONLY the React component code using React.createElement. NO JSX, NO angle brackets like <div>.
 `
 
-  const response = await codeLLM.invoke([
+  const response = await getCodeLLM().invoke([
     new SystemMessage(`You are an expert UI developer creating production-ready React components.
 
 QUALITY REQUIREMENTS:

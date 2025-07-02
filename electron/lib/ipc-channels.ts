@@ -74,6 +74,12 @@ export const IPC_CHANNELS = {
   CHAT_WINDOW_MESSAGE: 'chat-window:message',
   CHAT_WINDOW_SYNC: 'chat-window:sync',
   CHAT_WINDOW_READY: 'chat-window:ready',
+
+  // API Key Management
+  SAVE_API_KEY: 'save-api-key',
+  GET_API_KEY: 'get-api-key',
+  DELETE_API_KEY: 'delete-api-key',
+  CHECK_API_KEY: 'check-api-key',
 } as const;
 
 export type IpcChannels = typeof IPC_CHANNELS[keyof typeof IPC_CHANNELS]; 

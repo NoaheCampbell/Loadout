@@ -6,11 +6,15 @@ import Sidebar from './components/Sidebar'
 import Workspace from './components/Workspace'
 import ThemeToggle from './components/ThemeToggle'
 import ChatWindow from './components/ChatWindow'
+import SettingsModal from './components/SettingsModal'
+import toast from 'react-hot-toast'
 import './App.css'
 
 function App() {
   const { theme, setProjects } = useStore()
   const [currentRoute, setCurrentRoute] = useState('main')
+  const [showSettings, setShowSettings] = useState(false)
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null)
 
   // Check route on mount and hash changes
   useEffect(() => {
@@ -32,6 +36,27 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
   }, [theme])
+
+  // Check API key on startup
+  useEffect(() => {
+    if (currentRoute === 'main') {
+      const checkApiKey = async () => {
+        const hasKey = await ipc.checkApiKey()
+        setHasApiKey(hasKey)
+        
+        if (!hasKey) {
+          // Show a toast after a short delay to let the app load
+          setTimeout(() => {
+            toast.error('Please set your OpenAI API key in Settings', {
+              duration: 6000,
+              icon: '🔑'
+            })
+          }, 1000)
+        }
+      }
+      checkApiKey()
+    }
+  }, [currentRoute])
 
   // Load projects on mount (only for main app)
   useEffect(() => {
@@ -81,11 +106,21 @@ function App() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        <Sidebar />
+        <Sidebar onOpenSettings={() => setShowSettings(true)} />
         <main className="flex-1 overflow-hidden">
           <Workspace />
         </main>
       </div>
+
+      {/* Settings Modal */}
+      <SettingsModal 
+        isOpen={showSettings} 
+        onClose={() => {
+          setShowSettings(false)
+          // Re-check API key after closing settings
+          ipc.checkApiKey().then(setHasApiKey)
+        }} 
+      />
 
       {/* Toast Notifications */}
       <Toaster />

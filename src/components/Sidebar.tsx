@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, Folder, Loader2, Trash2, ChevronRight, ChevronDown, CheckCircle, AlertCircle, GripVertical } from 'lucide-react'
+import { Plus, Folder, Loader2, Trash2, ChevronRight, ChevronDown, CheckCircle, AlertCircle, GripVertical, Settings } from 'lucide-react'
 import { useStore } from '../store'
 import { format } from 'date-fns'
 import { ipc } from '../lib/ipc'
@@ -63,7 +63,11 @@ function getNodeDisplayName(node: string): string {
   return node
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  onOpenSettings: () => void
+}
+
+export default function Sidebar({ onOpenSettings }: SidebarProps) {
   const { 
     projects, 
     selectedProjectId, 
@@ -396,6 +400,17 @@ export default function Sidebar() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Settings Button */}
+      <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+        <button
+          onClick={onOpenSettings}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors"
+        >
+          <Settings className="w-4 h-4" />
+          Settings
+        </button>
       </div>
 
       {/* Sidebar resize handle */}

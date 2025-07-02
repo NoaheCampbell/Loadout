@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, safeStorage } from 'electron';
 import fs from 'fs/promises';
 import path from 'path';
 import { nanoid } from 'nanoid';
@@ -422,4 +422,46 @@ ${brainlift.contextLinks.map((l: string) => `- ${l}`).join('\n')}`;
   }
 }
 
-export const storage = new StorageManager(); 
+export const storage = new StorageManager();
+
+// API Key storage
+const API_KEY_FILE = path.join(app.getPath('userData'), 'api-key.enc')
+
+export async function saveApiKey(apiKey: string): Promise<void> {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Encryption is not available on this system')
+    }
+    
+    const encrypted = safeStorage.encryptString(apiKey)
+    await fs.writeFile(API_KEY_FILE, encrypted)
+  } catch (error) {
+    console.error('Error saving API key:', error)
+    throw error
+  }
+}
+
+export async function getApiKey(): Promise<string | null> {
+  try {
+    const encryptedData = await fs.readFile(API_KEY_FILE)
+    
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Encryption is not available on this system')
+    }
+    
+    const decrypted = safeStorage.decryptString(encryptedData)
+    return decrypted
+  } catch (error) {
+    // File doesn't exist or other error
+    console.log('No stored API key found')
+    return null
+  }
+}
+
+export async function deleteApiKey(): Promise<void> {
+  try {
+    await fs.unlink(API_KEY_FILE)
+  } catch (error) {
+    console.log('No API key to delete')
+  }
+} 

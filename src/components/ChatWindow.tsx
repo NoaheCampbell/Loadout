@@ -26,18 +26,48 @@ export default function ChatWindow() {
     if (savedTheme === 'dark') {
       document.documentElement.classList.add('dark')
     }
+    
+    // Notify that we're ready to receive messages
+    window.ipcRenderer.send('chat-window-ready')
   }, [])
 
   // Listen for initial sync data and messages from main window
   useEffect(() => {
     const handleSync = (event: any, data: any) => {
+      console.log('Chat window received sync data:', data)
       if (data.messages) setMessages(data.messages)
       if (data.projectContext) setProjectContext(data.projectContext)
     }
 
     const handleMessage = (event: any, data: any) => {
+      console.log('Chat window received message:', data.type, data.message?.id)
+      
       if (data.type === 'new-message') {
-        setMessages(prev => [...prev, data.message])
+        setMessages(prev => {
+          // Check if message already exists to prevent duplicates
+          const exists = prev.some(msg => msg.id === data.message.id)
+          if (exists) {
+            console.log('Message already exists, skipping:', data.message.id)
+            return prev
+          }
+          return [...prev, data.message]
+        })
+      } else if (data.type === 'update-message') {
+        // Update existing message instead of adding new one
+        setMessages(prev => {
+          const existing = prev.find(msg => msg.id === data.message.id)
+          if (existing) {
+            return prev.map(msg => 
+              msg.id === data.message.id 
+                ? { ...msg, content: data.message.content }
+                : msg
+            )
+          } else {
+            // If message doesn't exist yet, add it
+            console.log('Message not found for update, adding:', data.message.id)
+            return [...prev, data.message]
+          }
+        })
       } else if (data.type === 'update-context') {
         setProjectContext(data.projectContext)
       } else if (data.type === 'response-status') {
@@ -84,6 +114,9 @@ export default function ChatWindow() {
       timestamp: new Date().toISOString()
     }
 
+    // Add to local state immediately so it shows up
+    setMessages(prev => [...prev, newMessage])
+    
     // Send to main window
     window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
       type: 'user-message',

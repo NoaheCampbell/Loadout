@@ -3,13 +3,23 @@ import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages
 import { ChatMessage } from '../../src/types'
 import { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from './ipc-channels'
+import { getApiKey } from './storage'
 
-const chatModel = new ChatOpenAI({
-  modelName: 'gpt-4',
-  temperature: 0.7,
-  openAIApiKey: process.env.OPENAI_API_KEY,
-  streaming: true,
-})
+// Function to get chat model with current API key
+async function getChatModel() {
+  const apiKey = await getApiKey()
+  
+  if (!apiKey) {
+    throw new Error('OpenAI API key not configured. Please set your API key in settings.')
+  }
+  
+  return new ChatOpenAI({
+    modelName: 'gpt-4',
+    temperature: 0.7,
+    openAIApiKey: apiKey,
+    streaming: true,
+  })
+}
 
 const SYSTEM_PROMPT = `You are a helpful AI assistant specialized in refining and clarifying project ideas for developers. Your goal is to help users think through their project concepts by asking insightful questions and providing constructive suggestions.
 
@@ -51,6 +61,8 @@ Remember: You can see all their generated UI files and code, so provide specific
 
 export async function startProjectChat(initialIdea: string, event: Electron.IpcMainInvokeEvent): Promise<void> {
   try {
+    const chatModel = await getChatModel()
+    
     const messages = [
       new SystemMessage(SYSTEM_PROMPT),
       new HumanMessage(initialIdea)
@@ -74,6 +86,8 @@ export async function startProjectChat(initialIdea: string, event: Electron.IpcM
 
 export async function sendChatMessage(content: string, chatHistory: ChatMessage[], event: Electron.IpcMainInvokeEvent): Promise<void> {
   try {
+    const chatModel = await getChatModel()
+    
     const messages = [new SystemMessage(SYSTEM_PROMPT)]
     
     // Convert chat history to LangChain messages
@@ -120,6 +134,8 @@ export async function sendUIChatMessage(
   fullResponse: string;
 }> {
   try {
+    const chatModel = await getChatModel()
+    
     // Build context about the current UI
     let uiContext = `
 Current project: ${projectContext.projectIdea}

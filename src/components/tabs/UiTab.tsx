@@ -205,6 +205,8 @@ function LocalhostPreview({ files, refreshKey }: { files: any[]; refreshKey: num
       className="w-full border-0 bg-white"
       style={{ height: '800px', minHeight: '800px' }}
       title="UI Preview"
+      // Remove sandbox to allow full permissions
+      allow="*"
     />
   )
 }
@@ -240,6 +242,130 @@ export default function UiTab() {
     }
   }, [selectedProjectId])
   
+  // Process a user message (core logic separated from UI)
+  const processUserMessage = async (content: string, userMessage: ChatMessage, isChatOpen?: boolean) => {
+    console.log('processUserMessage called with:', content)
+    const chatIsOpen = isChatOpen !== undefined ? isChatOpen : showChat
+    console.log('Chat is open:', chatIsOpen)
+    console.log('Current chatMessages length:', chatMessages.length)
+    
+    setIsWaitingForResponse(true)
+    
+    // Notify chat window of response status
+    if (chatIsOpen) {
+      window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
+        type: 'response-status',
+        isWaiting: true
+      })
+    }
+
+    try {
+      // Get current UI context
+      const componentNames = currentProjectData?.uiFiles?.map(f => f.filename.replace('.js', '')) || []
+      const projectContext = {
+        projectIdea: currentProjectData?.idea || 'Unknown project',
+        components: componentNames,
+        uiStrategy: currentProjectData?.uiStrategy,
+        // Add the actual UI files so the AI can see the code
+        uiFiles: currentProjectData?.uiFiles || []
+      }
+
+      // Create a new message that we'll update as chunks arrive
+      const assistantMessageId = nanoid()
+      let accumulatedContent = ''
+      
+      // Set up chunk listener
+      const unsubscribeChunk = ipc.on(IPC_CHANNELS.UI_CHAT_STREAM_CHUNK, (data: { content: string }) => {
+        accumulatedContent += data.content
+        console.log('Main window: chunk received, accumulated length:', accumulatedContent.length)
+        
+        const newMessage = {
+          id: assistantMessageId,
+          role: 'assistant' as const,
+          content: accumulatedContent,
+          timestamp: new Date().toISOString()
+        }
+        
+        setChatMessages(prev => {
+          const existing = prev.find(msg => msg.id === assistantMessageId)
+          if (existing) {
+            console.log('Updating existing message:', assistantMessageId, 'with content length:', accumulatedContent.length)
+            return prev.map(msg => 
+              msg.id === assistantMessageId 
+                ? { ...msg, content: accumulatedContent }
+                : msg
+            )
+          } else {
+            console.log('Adding new message:', assistantMessageId)
+            return [...prev, newMessage]
+          }
+        })
+        
+        // Forward to chat window if open - use different message types for new vs update
+        if (chatIsOpen) {
+          const isFirstChunk = accumulatedContent === data.content
+          console.log('Main window: forwarding to chat window, isFirstChunk:', isFirstChunk, 'messageId:', assistantMessageId)
+          window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
+            type: isFirstChunk ? 'new-message' : 'update-message',
+            message: newMessage
+          })
+        } else {
+          console.log('Chat window not open, not forwarding message')
+        }
+      })
+      
+      // Set up end listener
+      const unsubscribeEnd = ipc.on(IPC_CHANNELS.UI_CHAT_STREAM_END, () => {
+        setIsWaitingForResponse(false)
+        // Notify chat window of response status
+        if (chatIsOpen) {
+          window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
+            type: 'response-status',
+            isWaiting: false
+          })
+        }
+        unsubscribeChunk()
+        unsubscribeEnd()
+      })
+
+      // Send message to backend
+      const result = await ipc.sendUIChatMessage(content, chatMessages, projectContext)
+      
+      if (result.success && result.data) {
+        if (result.data.isEditRequest && result.data.editInstructions) {
+          // Store the edit instructions for when user clicks regenerate
+          setPendingEditInstructions(result.data.editInstructions)
+        }
+      }
+    } catch (error) {
+      console.error('Error sending UI chat message:', error)
+      toast.error('Failed to send message')
+      setIsWaitingForResponse(false)
+    }
+  }
+  
+  // UI Chat handlers - define before useEffect to avoid stale closures
+  const handleSendChatMessageFromWindow = async (userMessage: ChatMessage) => {
+    if (isWaitingForResponse) return
+    
+    console.log('Received user message from chat window:', userMessage.content)
+    
+    // Message already exists in chat window, just add to our state
+    setChatMessages(prev => {
+      // Check if already exists to prevent duplicates
+      if (prev.some(msg => msg.id === userMessage.id)) {
+        console.log('Message already exists in main window state')
+        return prev
+      }
+      console.log('Adding message to main window state')
+      return [...prev, userMessage]
+    })
+    
+    // Since we received a message from the chat window, we know it's open
+    // Pass this info to processUserMessage
+    await processUserMessage(userMessage.content, userMessage, true)
+  }
+  
   // Listen for chat window events
   useEffect(() => {
     const handleChatClosed = () => {
@@ -248,25 +374,32 @@ export default function UiTab() {
     
     const handleChatMessage = (event: any, data: any) => {
       if (data.type === 'user-message') {
-        // Add user message to local state
-        setChatMessages(prev => [...prev, data.message])
-        // Send to backend for processing
-        handleSendChatMessage(data.message.content)
+        // If we're receiving a message from chat window, it must be open
+        setShowChat(true)
+        handleSendChatMessageFromWindow(data.message)
       }
+    }
+    
+    const handleChatWindowReady = () => {
+      console.log('Chat window reported ready')
+      setShowChat(true)
     }
     
     window.ipcRenderer.on('chat-window-closed', handleChatClosed)
     window.ipcRenderer.on(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, handleChatMessage)
+    window.ipcRenderer.on('chat-window-ready', handleChatWindowReady)
     
     return () => {
       window.ipcRenderer.removeAllListeners('chat-window-closed')
       window.ipcRenderer.removeAllListeners(IPC_CHANNELS.CHAT_WINDOW_MESSAGE)
+      window.ipcRenderer.removeAllListeners('chat-window-ready')
     }
-  }, [chatMessages])
+  }, [isWaitingForResponse])
   
   const openChatWindow = () => {
     if (!currentProjectData) return
     
+    console.log('Opening chat window with messages:', chatMessages.length)
     setShowChat(true)
     window.ipcRenderer.send(IPC_CHANNELS.OPEN_CHAT_WINDOW, {
       messages: chatMessages,
@@ -551,6 +684,7 @@ export default function UiTab() {
   const handleSendChatMessage = async (content: string) => {
     if (!content.trim() || isWaitingForResponse) return
 
+    // Create new user message
     const userMessage: ChatMessage = {
       id: nanoid(),
       role: 'user',
@@ -558,86 +692,23 @@ export default function UiTab() {
       timestamp: new Date().toISOString()
     }
     
-    setChatMessages(prev => [...prev, userMessage])
-    setIsWaitingForResponse(true)
-    
-    // Notify chat window of response status
-    window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
-      type: 'response-status',
-      isWaiting: true
+    // Add to local state
+    setChatMessages(prev => {
+      console.log('Adding user message, total messages will be:', prev.length + 1)
+      return [...prev, userMessage]
     })
-
-    try {
-      // Get current UI context
-      const componentNames = currentProjectData?.uiFiles?.map(f => f.filename.replace('.js', '')) || []
-      const projectContext = {
-        projectIdea: currentProjectData?.idea || 'Unknown project',
-        components: componentNames,
-        uiStrategy: currentProjectData?.uiStrategy,
-        // Add the actual UI files so the AI can see the code
-        uiFiles: currentProjectData?.uiFiles || []
-      }
-
-      // Create a new message that we'll update as chunks arrive
-      const assistantMessageId = nanoid()
-      let accumulatedContent = ''
-      
-      // Set up chunk listener
-      const unsubscribeChunk = ipc.on(IPC_CHANNELS.UI_CHAT_STREAM_CHUNK, (data: { content: string }) => {
-        accumulatedContent += data.content
-        const newMessage = {
-          id: assistantMessageId,
-          role: 'assistant' as const,
-          content: accumulatedContent,
-          timestamp: new Date().toISOString()
-        }
-        
-        setChatMessages(prev => {
-          const existing = prev.find(msg => msg.id === assistantMessageId)
-          if (existing) {
-            return prev.map(msg => 
-              msg.id === assistantMessageId 
-                ? { ...msg, content: accumulatedContent }
-                : msg
-            )
-          } else {
-            return [...prev, newMessage]
-          }
-        })
-        
-        // Forward to chat window
-        window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
-          type: 'new-message',
-          message: newMessage
-        })
+    
+    // Send to chat window if it's open
+    if (showChat) {
+      console.log('Sending user message to chat window')
+      window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
+        type: 'new-message',
+        message: userMessage
       })
-      
-      // Set up end listener
-      const unsubscribeEnd = ipc.on(IPC_CHANNELS.UI_CHAT_STREAM_END, () => {
-        setIsWaitingForResponse(false)
-        // Notify chat window of response status
-        window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
-          type: 'response-status',
-          isWaiting: false
-        })
-        unsubscribeChunk()
-        unsubscribeEnd()
-      })
-
-      // Send message to backend
-      const result = await ipc.sendUIChatMessage(content, chatMessages, projectContext)
-      
-      if (result.success && result.data) {
-        if (result.data.isEditRequest && result.data.editInstructions) {
-          // Store the edit instructions for when user clicks regenerate
-          setPendingEditInstructions(result.data.editInstructions)
-        }
-      }
-    } catch (error) {
-      console.error('Error sending UI chat message:', error)
-      toast.error('Failed to send message')
-      setIsWaitingForResponse(false)
     }
+    
+    // Process the message
+    await processUserMessage(content, userMessage)
   }
 
   const handleChatRegenerate = async () => {
@@ -683,6 +754,14 @@ export default function UiTab() {
           timestamp: new Date().toISOString()
         }
         setChatMessages(prev => [...prev, confirmMessage])
+        
+        // Also send to chat window if open
+        if (showChat) {
+          window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
+            type: 'new-message',
+            message: confirmMessage
+          })
+        }
       } else {
         toast.error(result.error || 'Failed to regenerate UI')
       }
