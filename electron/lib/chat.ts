@@ -6,6 +6,30 @@ import { IPC_CHANNELS } from './ipc-channels'
 import { getApiKey } from './storage'
 import { getChatModel } from './chat-providers'
 
+// Store active abort controllers
+const activeGenerations = new Map<string, AbortController>()
+
+// Function to stop a generation
+export function stopGeneration(generationId: string) {
+  const controller = activeGenerations.get(generationId)
+  if (controller) {
+    console.log('[chat.ts] Stopping generation:', generationId)
+    controller.abort()
+    activeGenerations.delete(generationId)
+    return true
+  }
+  return false
+}
+
+// Function to stop all generations
+export function stopAllGenerations() {
+  console.log('[chat.ts] Stopping all generations, count:', activeGenerations.size)
+  activeGenerations.forEach((controller, id) => {
+    controller.abort()
+  })
+  activeGenerations.clear()
+}
+
 // Function to get chat model with current API key
 async function getChatModelCompat() {
   // Use the new provider system
@@ -51,6 +75,10 @@ For questions (not edits):
 Remember: You can see all their generated UI files and code, so provide specific, helpful guidance.`
 
 export async function startProjectChat(initialIdea: string, event: Electron.IpcMainInvokeEvent): Promise<void> {
+  const generationId = `chat-${Date.now()}`
+  const abortController = new AbortController()
+  activeGenerations.set(generationId, abortController)
+  
   try {
     const chatModel = await getChatModelCompat()
     
@@ -60,22 +88,39 @@ export async function startProjectChat(initialIdea: string, event: Electron.IpcM
     ]
 
     let fullContent = ''
-    const stream = await chatModel.stream(messages)
+    const stream = await chatModel.stream(messages, { signal: abortController.signal })
     
     for await (const chunk of stream) {
+      if (abortController.signal.aborted) {
+        console.log('[chat.ts] Generation aborted')
+        break
+      }
       const content = chunk.content as string
       fullContent += content
       event.sender.send(IPC_CHANNELS.CHAT_STREAM_CHUNK, { content })
     }
     
-    event.sender.send(IPC_CHANNELS.CHAT_STREAM_END, { fullContent })
-  } catch (error) {
-    console.error('Error in startProjectChat:', error)
-    throw error
+    if (!abortController.signal.aborted) {
+      event.sender.send(IPC_CHANNELS.CHAT_STREAM_END, { fullContent })
+    }
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.log('[chat.ts] Generation was aborted')
+      event.sender.send(IPC_CHANNELS.CHAT_STREAM_END, { fullContent: '', aborted: true })
+    } else {
+      console.error('Error in startProjectChat:', error)
+      throw error
+    }
+  } finally {
+    activeGenerations.delete(generationId)
   }
 }
 
 export async function sendChatMessage(content: string, chatHistory: ChatMessage[], event: Electron.IpcMainInvokeEvent): Promise<void> {
+  const generationId = `chat-${Date.now()}`
+  const abortController = new AbortController()
+  activeGenerations.set(generationId, abortController)
+  
   try {
     const chatModel = await getChatModelCompat()
     
@@ -94,18 +139,31 @@ export async function sendChatMessage(content: string, chatHistory: ChatMessage[
     messages.push(new HumanMessage(content))
 
     let fullContent = ''
-    const stream = await chatModel.stream(messages)
+    const stream = await chatModel.stream(messages, { signal: abortController.signal })
     
     for await (const chunk of stream) {
+      if (abortController.signal.aborted) {
+        console.log('[chat.ts] Generation aborted')
+        break
+      }
       const content = chunk.content as string
       fullContent += content
       event.sender.send(IPC_CHANNELS.CHAT_STREAM_CHUNK, { content })
     }
     
-    event.sender.send(IPC_CHANNELS.CHAT_STREAM_END, { fullContent })
-  } catch (error) {
-    console.error('Error in sendChatMessage:', error)
-    throw error
+    if (!abortController.signal.aborted) {
+      event.sender.send(IPC_CHANNELS.CHAT_STREAM_END, { fullContent })
+    }
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.log('[chat.ts] Generation was aborted')
+      event.sender.send(IPC_CHANNELS.CHAT_STREAM_END, { fullContent: '', aborted: true })
+    } else {
+      console.error('Error in sendChatMessage:', error)
+      throw error
+    }
+  } finally {
+    activeGenerations.delete(generationId)
   }
 }
 

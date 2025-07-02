@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
-import { Sparkles, Loader2, Send, MessageCircle, ArrowRight, ArrowDown } from 'lucide-react'
+import { Sparkles, Loader2, Send, MessageCircle, ArrowRight, ArrowDown, StopCircle } from 'lucide-react'
 import { useStore } from '../../store'
 import { ipc } from '../../lib/ipc'
 import { IPC_CHANNELS } from '../../../electron/lib/ipc-channels'
 import toast from 'react-hot-toast'
 import { ChatMessage } from '../../types'
 import { nanoid } from 'nanoid'
-import ReactMarkdown from 'react-markdown'
 import ModelSelector from '../ModelSelector'
+import ChatMessageComponent from '../ChatMessage'
 
 interface IdeaTabProps {
   isNewProject?: boolean
@@ -338,66 +338,12 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
         onScroll={handleScroll}
       >
         <div className="space-y-4">
-          {chatMessages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-2xl p-4 rounded-lg ${
-                  message.role === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
-                }`}
-              >
-                {message.role === 'user' ? (
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                ) : (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown
-                      components={{
-                        // Custom component styling
-                        h1: ({ children }) => <h1 className="text-xl font-bold mb-2">{children}</h1>,
-                        h2: ({ children }) => <h2 className="text-lg font-semibold mb-2">{children}</h2>,
-                        h3: ({ children }) => <h3 className="text-base font-semibold mb-1">{children}</h3>,
-                        ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
-                        ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
-                        li: ({ children }) => <li className="mb-1">{children}</li>,
-                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                        code: ({ children, className, ...props }: any) => {
-                          const inline = !className || !className.includes('language-')
-                          return inline ? (
-                            <code className="bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-sm" {...props}>
-                              {children}
-                            </code>
-                          ) : (
-                            <code className="block bg-gray-200 dark:bg-gray-700 p-2 rounded text-sm overflow-x-auto" {...props}>
-                              {children}
-                            </code>
-                          )
-                        },
-                        blockquote: ({ children }) => (
-                          <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic my-2">
-                            {children}
-                          </blockquote>
-                        ),
-                        a: ({ children, href }) => (
-                          <a href={href} className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">
-                            {children}
-                          </a>
-                        ),
-                      }}
-                    >
-                      {message.content}
-                    </ReactMarkdown>
-                    {/* Show typing indicator if this is the last message and we're waiting for response */}
-                    {isWaitingForResponse && chatMessages[chatMessages.length - 1]?.id === message.id && (
-                      <span className="inline-block w-2 h-4 bg-gray-400 dark:bg-gray-500 animate-pulse ml-1" />
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+          {chatMessages.map((message, index) => (
+            <ChatMessageComponent 
+              key={message.id} 
+              message={message} 
+              isStreaming={isWaitingForResponse && index === chatMessages.length - 1 && message.role === 'assistant'}
+            />
           ))}
           
           {/* Removed separate loading indicator since we now show streaming content */}
@@ -427,18 +373,37 @@ export default function IdeaTab({ isNewProject = false }: IdeaTabProps) {
             type="text"
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+            onKeyPress={(e) => e.key === 'Enter' && !isWaitingForResponse && handleSendMessage()}
             placeholder="Type your response..."
             className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             disabled={isWaitingForResponse}
           />
-          <button
-            onClick={handleSendMessage}
-            disabled={!chatInput.trim() || isWaitingForResponse}
-            className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 disabled:cursor-not-allowed"
-          >
-            <Send className="w-5 h-5" />
-          </button>
+          {isWaitingForResponse ? (
+            <button
+              onClick={async () => {
+                try {
+                  await ipc.invoke(IPC_CHANNELS.STOP_GENERATION)
+                  setIsWaitingForResponse(false)
+                  toast('AI response stopped', { icon: '🛑' })
+                } catch (error) {
+                  console.error('Failed to stop generation:', error)
+                  toast.error('Failed to stop generation')
+                }
+              }}
+              className="px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2"
+            >
+              <StopCircle className="w-5 h-5" />
+              Stop
+            </button>
+          ) : (
+            <button
+              onClick={handleSendMessage}
+              disabled={!chatInput.trim()}
+              className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-lg font-medium shadow-sm hover:shadow-md transition-all duration-200 disabled:cursor-not-allowed"
+            >
+              <Send className="w-5 h-5" />
+            </button>
+          )}
           <button
             onClick={handleGenerate}
             disabled={isGenerating || chatMessages.length < 2}

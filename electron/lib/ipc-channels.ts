@@ -17,6 +17,7 @@ export const IPC_CHANNELS = {
   CHAT_STREAM_CHUNK: 'chat:stream-chunk',
   CHAT_STREAM_END: 'chat:stream-end',
   START_PROJECT_CHAT: 'chat:start-project',
+  STOP_GENERATION: 'chat:stop-generation',
   
   // UI Chat
   UI_CHAT_MESSAGE: 'ui-chat:message',

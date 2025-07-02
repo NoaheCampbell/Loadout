@@ -434,6 +434,19 @@ ipcMain.handle(IPC_CHANNELS.UI_CHAT_MESSAGE, async (event, data: {
   }
 })
 
+// Stop generation handler
+ipcMain.handle(IPC_CHANNELS.STOP_GENERATION, async () => {
+  try {
+    const { stopAllGenerations } = await import('../lib/chat')
+    stopAllGenerations()
+    console.log('Stopping all active generations')
+    return { success: true }
+  } catch (error) {
+    console.error('Failed to stop generation:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to stop generation' }
+  }
+})
+
 // Preview server handlers
 let previewUrl: string | null = null
 

@@ -1,19 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Loader2, MessageCircle, ArrowDown } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import { Send, Loader2, MessageCircle, ArrowDown, StopCircle } from 'lucide-react'
 import { nanoid } from 'nanoid'
 import { IPC_CHANNELS } from '../../electron/lib/ipc-channels'
 import ModelSelector from './ModelSelector'
-
-interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant' 
-  content: string
-  timestamp: string
-}
+import ChatMessage from './ChatMessage'
+import { ChatMessage as ChatMessageType } from '../../src/types'
 
 export default function ChatWindow() {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ChatMessageType[]>([])
   const [input, setInput] = useState('')
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false)
   const [projectContext, setProjectContext] = useState<any>(null)
@@ -48,20 +42,16 @@ export default function ChatWindow() {
   // Listen for initial sync data and messages from main window
   useEffect(() => {
     const handleSync = (event: any, data: any) => {
-      console.log('Chat window received sync data:', data)
       if (data.messages) setMessages(data.messages)
       if (data.projectContext) setProjectContext(data.projectContext)
     }
 
     const handleMessage = (event: any, data: any) => {
-      console.log('Chat window received message:', data.type, data.message?.id)
-      
       if (data.type === 'new-message') {
         setMessages(prev => {
           // Check if message already exists to prevent duplicates
           const exists = prev.some(msg => msg.id === data.message.id)
           if (exists) {
-            console.log('Message already exists, skipping:', data.message.id)
             return prev
           }
           return [...prev, data.message]
@@ -78,7 +68,6 @@ export default function ChatWindow() {
             )
           } else {
             // If message doesn't exist yet, add it
-            console.log('Message not found for update, adding:', data.message.id)
             return [...prev, data.message]
           }
         })
@@ -121,7 +110,7 @@ export default function ChatWindow() {
   const handleSend = () => {
     if (!input.trim() || isWaitingForResponse) return
 
-    const newMessage: ChatMessage = {
+    const newMessage: ChatMessageType = {
       id: nanoid(),
       role: 'user',
       content: input.trim(),
@@ -173,27 +162,12 @@ export default function ChatWindow() {
             </div>
           )}
           
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[80%] px-4 py-2 rounded-lg ${
-                  message.role === 'user'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
-                }`}
-              >
-                {message.role === 'assistant' ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown>{message.content}</ReactMarkdown>
-                  </div>
-                ) : (
-                  <div className="text-sm">{message.content}</div>
-                )}
-              </div>
-            </div>
+          {messages.map((message, index) => (
+            <ChatMessage 
+              key={message.id} 
+              message={message} 
+              isStreaming={isWaitingForResponse && index === messages.length - 1 && message.role === 'assistant'}
+            />
           ))}
           
           {isWaitingForResponse && (
@@ -229,18 +203,38 @@ export default function ChatWindow() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            onKeyPress={(e) => e.key === 'Enter' && !isWaitingForResponse && handleSend()}
             placeholder="Ask about UI or request changes..."
             className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
             disabled={isWaitingForResponse}
           />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isWaitingForResponse}
-            className="px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg transition-colors"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+          {isWaitingForResponse ? (
+            <button
+              onClick={async () => {
+                try {
+                  await window.ipcRenderer.invoke(IPC_CHANNELS.STOP_GENERATION)
+                  setIsWaitingForResponse(false)
+                  window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
+                    type: 'stop-generation'
+                  })
+                } catch (error) {
+                  console.error('Failed to stop generation:', error)
+                }
+              }}
+              className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors flex items-center gap-2"
+            >
+              <StopCircle className="w-4 h-4" />
+              Stop
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim()}
+              className="px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
     </div>
