@@ -57,6 +57,7 @@ async function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
+    acceptFirstMouse: true,
     webPreferences: {
       preload,
       // Warning: Enable nodeIntegration and disable contextIsolation is not secure in production
@@ -204,6 +205,7 @@ function createChatWindow() {
     parent: win || undefined,
     modal: false,
     show: false,
+    acceptFirstMouse: true,
     webPreferences: {
       preload,
       nodeIntegration: false,
@@ -218,7 +220,9 @@ function createChatWindow() {
   
   // Show window after setup
   chatWin.once('ready-to-show', () => {
-    chatWin.show()
+    if (chatWin && !chatWin.isDestroyed()) {
+      chatWin.show()
+    }
   })
 
   // Load chat window HTML
