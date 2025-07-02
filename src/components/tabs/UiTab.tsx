@@ -3,16 +3,17 @@ import { Eye, Code2, Copy, AlertCircle, RefreshCw, FileCode, FileCode2, Folder, 
 import { useStore } from '../../store'
 import toast from 'react-hot-toast'
 import Prism from 'prismjs'
+import 'prismjs/themes/prism-tomorrow.css'
 import 'prismjs/components/prism-javascript'
-import 'prismjs/components/prism-typescript'
 import 'prismjs/components/prism-jsx'
 import 'prismjs/components/prism-tsx'
 import ReactMarkdown from 'react-markdown'
-// Removed prism theme - using custom styles only
 import { ipc } from '../../lib/ipc'
 import { IPC_CHANNELS } from '../../../electron/lib/ipc-channels'
 import type { GenerationProgress, ChatMessage } from '../../types'
 import { nanoid } from 'nanoid'
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
 
 // Custom styles for better syntax highlighting
 const syntaxStyles = `
@@ -236,14 +237,96 @@ export default function UiTab() {
   const chatContainerRef = useRef<HTMLDivElement>(null)
   const [isUserScrolling, setIsUserScrolling] = useState(false)
   
+  // Floating chat window state
+  const [chatPosition, setChatPosition] = useState({ x: window.innerWidth - 420, y: 100 })
+  const [chatSize, setChatSize] = useState({ width: 400, height: 500 })
+  const [isDraggingChat, setIsDraggingChat] = useState(false)
+  const [isResizingChat, setIsResizingChat] = useState(false)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [resizeStart, setResizeStart] = useState({ width: 0, height: 0, x: 0, y: 0 })
+  const chatWindowRef = useRef<HTMLDivElement>(null)
+  const chatHeaderRef = useRef<HTMLDivElement>(null)
+  
   // Stop preview server when component unmounts or project changes
   useEffect(() => {
     return () => {
-      // Stop server on unmount
-      ipc.stopPreviewServer().catch(console.error)
+      ipc.stopPreviewServer()
     }
-  }, [selectedProjectId]) // Also re-run when project changes
+  }, [selectedProjectId])
   
+  // Handle mouse events for dragging and resizing chat window
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingChat) {
+        const newX = e.clientX - dragOffset.x
+        const newY = e.clientY - dragOffset.y
+        
+        // Keep window within viewport bounds
+        const maxX = window.innerWidth - chatSize.width
+        const maxY = window.innerHeight - chatSize.height
+        
+        setChatPosition({
+          x: Math.max(0, Math.min(newX, maxX)),
+          y: Math.max(0, Math.min(newY, maxY))
+        })
+      } else if (isResizingChat) {
+        const deltaX = e.clientX - resizeStart.x
+        const deltaY = e.clientY - resizeStart.y
+        
+        const newWidth = Math.max(300, Math.min(800, resizeStart.width + deltaX))
+        const newHeight = Math.max(400, Math.min(window.innerHeight - 100, resizeStart.height + deltaY))
+        
+        setChatSize({ width: newWidth, height: newHeight })
+      }
+    }
+    
+    const handleMouseUp = () => {
+      setIsDraggingChat(false)
+      setIsResizingChat(false)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    
+    if (isDraggingChat || isResizingChat) {
+      document.body.style.cursor = isDraggingChat ? 'move' : 'nwse-resize'
+      document.body.style.userSelect = 'none'
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    }
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDraggingChat, isResizingChat, dragOffset, chatSize, resizeStart])
+  
+  const handleChatHeaderMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Prevent drag when clicking on buttons
+    if ((e.target as HTMLElement).closest('button')) return
+    
+    e.preventDefault()
+    const rect = chatWindowRef.current?.getBoundingClientRect()
+    if (rect) {
+      setDragOffset({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      })
+      setIsDraggingChat(true)
+    }
+  }
+  
+  const handleResizeMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setResizeStart({
+      width: chatSize.width,
+      height: chatSize.height,
+      x: e.clientX,
+      y: e.clientY
+    })
+    setIsResizingChat(true)
+  }
+
   if (!currentProjectData) {
     return (
       <div className="h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
@@ -750,145 +833,180 @@ export default function UiTab() {
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 overflow-hidden flex">
-            {/* Chat Panel */}
+          <div className="flex-1 overflow-hidden">
+            {/* Floating Chat Window */}
             {showChat && (
-              <div className="w-96 border-r border-gray-200 dark:border-gray-700 flex flex-col bg-gray-50 dark:bg-gray-900">
-                <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3 bg-white dark:bg-gray-800">
-                  <h3 className="font-semibold">UI Assistant</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Ask questions or request changes to your UI</p>
-                </div>
-                
-                {/* Chat messages */}
+              <div 
+                ref={chatWindowRef}
+                className="fixed bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col z-50"
+                style={{ 
+                  left: `${chatPosition.x}px`, 
+                  top: `${chatPosition.y}px`,
+                  width: `${chatSize.width}px`,
+                  height: `${chatSize.height}px`
+                }}
+              >
+                {/* Chat Header - Draggable */}
                 <div 
-                  ref={chatContainerRef}
-                  className="flex-1 overflow-y-auto p-4"
-                  onScroll={handleScroll}
+                  ref={chatHeaderRef}
+                  className="border-b border-gray-200 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-t-lg cursor-move flex items-center justify-between"
+                  onMouseDown={handleChatHeaderMouseDown}
                 >
-                  <div className="space-y-4">
-                    {chatMessages.length === 0 && (
-                      <div className="text-center text-gray-500 dark:text-gray-400 py-8">
-                        <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p className="text-sm">Start a conversation about your UI</p>
-                        <p className="text-xs mt-2">Ask questions or request specific changes</p>
-                      </div>
-                    )}
-                    
-                    {chatMessages.map((message) => (
-                      <div
-                        key={message.id}
-                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div
-                          className={`max-w-[80%] px-4 py-2 rounded-lg ${
-                            message.role === 'user'
-                              ? 'bg-blue-500 text-white'
-                              : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700'
-                          }`}
-                        >
-                          {message.role === 'assistant' ? (
-                            <div className="prose prose-sm dark:prose-invert max-w-none">
-                              <ReactMarkdown
-                                components={{
-                                  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                                  ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                                  ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
-                                  li: ({ children }) => <li className="mb-1">{children}</li>,
-                                  code: ({ children, ...props }) => {
-                                    const match = /language-(\w+)/.exec(props.className || '')
-                                    return match ? (
-                                      <code className="block p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm overflow-x-auto">{children}</code>
-                                    ) : (
-                                      <code className="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-sm">{children}</code>
-                                    )
-                                  },
-                                }}
-                              >
-                                {message.content}
-                              </ReactMarkdown>
-                            </div>
-                          ) : (
-                            <div className="text-sm">{message.content}</div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    
-                    {isWaitingForResponse && (
-                      <div className="flex justify-start">
-                        <div className="bg-white dark:bg-gray-800 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        </div>
-                      </div>
-                    )}
-                    
-                    <div ref={chatEndRef} />
+                  <div className="flex-1 select-none">
+                    <h3 className="font-semibold">UI Assistant</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Ask questions or request changes to your UI</p>
                   </div>
-                  
-                  {/* New messages indicator */}
-                  {isUserScrolling && isWaitingForResponse && (
-                    <button
-                      onClick={() => {
-                        setIsUserScrolling(false)
-                        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-                      }}
-                      className="absolute bottom-20 right-4 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-full shadow-lg text-sm flex items-center gap-1 transition-all duration-200"
-                    >
-                      <ArrowDown className="w-3 h-3" />
-                      New messages
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setShowChat(false)}
+                    className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors ml-2"
+                    title="Close chat"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
                 
-                {/* Chat input */}
-                <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800">
-                  {pendingEditInstructions && (
-                    <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                      <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">Ready to apply your changes!</p>
-                      <button
-                        onClick={handleChatRegenerate}
-                        disabled={isGenerating}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg transition-colors text-sm font-medium"
-                      >
-                        {isGenerating ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Applying Changes...
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="w-4 h-4" />
-                            Apply Changes
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
-                  
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendChatMessage()}
-                      placeholder="Ask about UI or request changes..."
-                      className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                      disabled={isWaitingForResponse}
-                    />
-                    <button
-                      onClick={handleSendChatMessage}
-                      disabled={!chatInput.trim() || isWaitingForResponse}
-                      className="px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+                {/* Chat content */}
+                <>
+                    {/* Chat messages */}
+                    <div 
+                      ref={chatContainerRef}
+                      className="flex-1 overflow-y-auto p-4"
+                      onScroll={handleScroll}
                     >
-                      <Send className="w-4 h-4" />
-                    </button>
+                      <div className="space-y-4">
+                        {chatMessages.length === 0 && (
+                          <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+                            <MessageCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                            <p className="text-sm">Start a conversation about your UI</p>
+                            <p className="text-xs mt-2">Ask questions or request specific changes</p>
+                          </div>
+                        )}
+                        
+                        {chatMessages.map((message) => (
+                          <div
+                            key={message.id}
+                            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div
+                              className={`max-w-[80%] px-4 py-2 rounded-lg ${
+                                message.role === 'user'
+                                  ? 'bg-blue-500 text-white'
+                                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700'
+                              }`}
+                            >
+                              {message.role === 'assistant' ? (
+                                <div className="prose prose-sm dark:prose-invert max-w-none">
+                                  <ReactMarkdown
+                                    components={{
+                                      p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                                      ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
+                                      ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
+                                      li: ({ children }) => <li className="mb-1">{children}</li>,
+                                      code: ({ children, ...props }) => {
+                                        const match = /language-(\w+)/.exec(props.className || '')
+                                        return match ? (
+                                          <code className="block p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm overflow-x-auto">{children}</code>
+                                        ) : (
+                                          <code className="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-sm">{children}</code>
+                                        )
+                                      },
+                                    }}
+                                  >
+                                    {message.content}
+                                  </ReactMarkdown>
+                                </div>
+                              ) : (
+                                <div className="text-sm">{message.content}</div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        
+                        {isWaitingForResponse && (
+                          <div className="flex justify-start">
+                            <div className="bg-white dark:bg-gray-800 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            </div>
+                          </div>
+                        )}
+                        
+                        <div ref={chatEndRef} />
+                      </div>
+                      
+                      {/* New messages indicator */}
+                      {isUserScrolling && isWaitingForResponse && (
+                        <button
+                          onClick={() => {
+                            setIsUserScrolling(false)
+                            chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+                          }}
+                          className="absolute bottom-20 right-4 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-full shadow-lg text-sm flex items-center gap-1 transition-all duration-200"
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                          New messages
+                        </button>
+                      )}
+                    </div>
+                    
+                    {/* Chat input */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800">
+                      {pendingEditInstructions && (
+                        <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">Ready to apply your changes!</p>
+                          <button
+                            onClick={handleChatRegenerate}
+                            disabled={isGenerating}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg transition-colors text-sm font-medium"
+                          >
+                            {isGenerating ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Applying Changes...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="w-4 h-4" />
+                                Apply Changes
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                      
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && handleSendChatMessage()}
+                          placeholder="Ask about UI or request changes..."
+                          className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          disabled={isWaitingForResponse}
+                        />
+                        <button
+                          onClick={handleSendChatMessage}
+                          disabled={!chatInput.trim() || isWaitingForResponse}
+                          className="px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                  
+                  {/* Resize Handle */}
+                  <div
+                    className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize group"
+                    onMouseDown={handleResizeMouseDown}
+                  >
+                    <div className="absolute bottom-0.5 right-0.5 w-2 h-2 border-b-2 border-r-2 border-gray-400 dark:border-gray-600 group-hover:border-blue-500 transition-colors" />
                   </div>
-                </div>
               </div>
             )}
             
             {/* Main Content */}
-            <div className="flex-1 overflow-hidden">
               {uiViewMode === 'preview' ? (
               <div className="h-full overflow-y-auto">
                 {hasCodeIssues || showRawCode ? (
@@ -1086,9 +1204,7 @@ export default function UiTab() {
                 )}
               </div>
             )}
-            </div>
           </div>
-          
 
         </div>
       )}
