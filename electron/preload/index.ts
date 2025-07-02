@@ -26,6 +26,14 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   // ...
 })
 
+// Expose window control functions
+contextBridge.exposeInMainWorld('electron', {
+  closeWindow: () => ipcRenderer.send('window-close'),
+  minimizeWindow: () => ipcRenderer.send('window-minimize'),
+  maximizeWindow: () => ipcRenderer.send('window-maximize'),
+  platform: process.platform
+})
+
 // --------- Preload scripts loading ---------
 function domReady(condition: DocumentReadyState[] = ['complete', 'interactive']) {
   return new Promise(resolve => {

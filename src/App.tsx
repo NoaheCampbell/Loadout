@@ -36,14 +36,18 @@ function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 overflow-hidden">
-      {/* Header */}
-      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+      {/* Header - Draggable for window movement */}
+      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <div className="flex items-center h-14 px-4">
-          <div className="flex items-center">
-            <img src="/favicon.ico" alt="Loadout" className="h-12 w-auto max-w-none" />
+          {/* Add padding on macOS to account for traffic lights */}
+          <div className={`flex items-center ${typeof window !== 'undefined' && window.electron?.platform === 'darwin' ? 'ml-20' : ''}`}>
+            <img src="/favicon.ico" alt="Loadout" className="h-9 w-auto max-w-none" />
+            <span className="ml-2 text-lg font-semibold">Loadout</span>
           </div>
           <div className="ml-auto flex items-center space-x-4">
-            <ThemeToggle />
+            <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </header>

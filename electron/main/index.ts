@@ -48,8 +48,14 @@ const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
 async function createWindow() {
   win = new BrowserWindow({
-    title: 'Main window',
+    title: 'Loadout',
     icon: path.join(process.env.VITE_PUBLIC, 'favicon.ico'),
+    frame: false,
+    titleBarStyle: 'hiddenInset',
+    width: 1200,
+    height: 800,
+    minWidth: 900,
+    minHeight: 600,
     webPreferences: {
       preload,
       // Warning: Enable nodeIntegration and disable contextIsolation is not secure in production
@@ -152,6 +158,28 @@ ipcMain.handle('open-win', (_, arg) => {
     childWindow.loadURL(`${VITE_DEV_SERVER_URL}#${arg}`)
   } else {
     childWindow.loadFile(indexHtml, { hash: arg })
+  }
+})
+
+// Window control handlers
+ipcMain.on('window-close', () => {
+  const window = BrowserWindow.getFocusedWindow()
+  if (window) window.close()
+})
+
+ipcMain.on('window-minimize', () => {
+  const window = BrowserWindow.getFocusedWindow()
+  if (window) window.minimize()
+})
+
+ipcMain.on('window-maximize', () => {
+  const window = BrowserWindow.getFocusedWindow()
+  if (window) {
+    if (window.isMaximized()) {
+      window.unmaximize()
+    } else {
+      window.maximize()
+    }
   }
 })
 

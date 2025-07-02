@@ -298,11 +298,12 @@ export default function Sidebar() {
       className="relative border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col"
       style={{ width: `${sidebarWidth}px` }}
     >
-      {/* New Project Button */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+      {/* New Project Button - Draggable area */}
+      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <button
           onClick={handleNewProject}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg shadow-sm hover:shadow-md transition-all duration-200 font-medium"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg shadow-sm hover:shadow-md transition-all duration-200 font-medium"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <Plus className="w-4 h-4" />
           New Project

@@ -243,7 +243,7 @@ ${currentProjectData.uiStrategy === 'v0' ? '## v0.dev Integration\n\nThis projec
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 px-6">
+        <div className="flex gap-1 px-6" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {tabs.map((tab) => {
             const Icon = tab.icon
             const isActive = currentTab === tab.id
