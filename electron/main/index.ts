@@ -134,11 +134,31 @@ async function createWindow() {
   update(win)
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(async () => {
+  createWindow()
+  
+  // Warm up Ollama model in the background if selected
+  try {
+    const { warmUpSelectedModel } = await import('../lib/chat-providers')
+    warmUpSelectedModel() // Don't await - let it run in background
+  } catch (error) {
+    console.error('Failed to initiate model warm-up:', error)
+  }
+})
 
 app.on('window-all-closed', () => {
   win = null
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', async () => {
+  // Stop Ollama keep-alive when app is quitting
+  try {
+    const { stopOllamaKeepAlive } = await import('../lib/chat-providers')
+    stopOllamaKeepAlive()
+  } catch (error) {
+    console.error('Failed to stop Ollama keep-alive:', error)
+  }
 })
 
 app.on('second-instance', () => {
@@ -528,6 +548,19 @@ ipcMain.handle('workflow:visualize', async () => {
   ipcMain.handle(IPC_CHANNELS.SAVE_PROVIDER_CONFIG, async (_event, config) => {
     const { saveProviderConfig } = await import('../lib/storage')
     await saveProviderConfig(config)
+    
+    // Start keep-alive for Ollama model if selected
+    const { startOllamaKeepAlive, stopOllamaKeepAlive, getOllamaModels } = await import('../lib/chat-providers')
+    
+    if (config.selectedProvider === 'ollama' && config.providers.ollama?.model) {
+      const models = await getOllamaModels()
+      if (models.includes(config.providers.ollama.model)) {
+        startOllamaKeepAlive(config.providers.ollama.model)
+      }
+    } else {
+      // Stop keep-alive if switching away from Ollama
+      stopOllamaKeepAlive()
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.GET_PROVIDER_CONFIG, async () => {

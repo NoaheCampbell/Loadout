@@ -111,6 +111,14 @@ export default function ModelSelector({ variant = 'default', className = '', onM
       }
       
       toast.success(`Switched to ${PROVIDER_INFO[provider].name} - ${getModelDisplayName(provider, model)}`)
+      
+      // Show keep-alive message for Ollama
+      if (provider === 'ollama') {
+        toast.success('Model will be kept warm for instant responses', {
+          icon: '🔥',
+          duration: 2000
+        })
+      }
     } catch (error) {
       toast.error('Failed to switch model')
       console.error('Failed to switch model:', error)

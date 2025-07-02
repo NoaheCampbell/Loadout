@@ -64,6 +64,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     anthropic: false
   })
   const [isCheckingOllama, setIsCheckingOllama] = useState(false)
+  const [isWarmingUp, setIsWarmingUp] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -152,6 +153,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
 
     setIsLoading(true)
+    
+    // Show warming up message for Ollama
+    if (selectedProvider === 'ollama' && selectedModels.ollama) {
+      setIsWarmingUp(true)
+      toast.loading('Warming up Ollama model...', { 
+        id: 'ollama-warmup',
+        duration: 5000 
+      })
+    }
+    
     try {
       const newConfig: ProviderConfig = {
         selectedProvider,
@@ -184,6 +195,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       
       await ipc.saveProviderConfig(newConfig)
       toast.success('Settings saved successfully')
+      
+      // Dismiss warming up toast if it exists
+      if (selectedProvider === 'ollama') {
+        toast.dismiss('ollama-warmup')
+        toast.success('Ollama model is being warmed up in the background', {
+          duration: 3000,
+          icon: '🚀'
+        })
+      }
+      
       setConfig(newConfig)
       setApiKeys({ openai: '', anthropic: '' }) // Clear temporary API keys
       onClose()
@@ -192,6 +213,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       console.error('Failed to save config:', error)
     } finally {
       setIsLoading(false)
+      setIsWarmingUp(false)
     }
   }
 
@@ -430,6 +452,23 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     ollama pull llama2
                   </code>
                 </div>
+                
+                {/* Keep-alive info for Ollama */}
+                {selectedProvider === 'ollama' && selectedModels.ollama && config?.selectedProvider === 'ollama' && (
+                  <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <Cpu className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5" />
+                      <div className="text-xs">
+                        <p className="font-medium text-blue-900 dark:text-blue-100">
+                          Model Keep-Alive Active
+                        </p>
+                        <p className="text-blue-700 dark:text-blue-300 mt-1">
+                          Your model will stay loaded in memory for instant responses. The app pings it every 4 minutes to prevent unloading.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -462,7 +501,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               disabled={isLoading || (currentProviderInfo.requiresApiKey && !apiKeys[selectedProvider]?.trim() && !hasConfig) || (selectedProvider === 'ollama' && !selectedModels.ollama)}
               className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 rounded-lg shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
             >
-              {isLoading ? 'Saving...' : 'Save Settings'}
+              {isLoading ? (isWarmingUp ? 'Warming up model...' : 'Saving...') : 'Save Settings'}
             </button>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { ChatOpenAI } from '@langchain/openai'
 import { ChatAnthropic } from '@langchain/anthropic'
 import { ChatOllama } from '@langchain/community/chat_models/ollama'
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
+import { HumanMessage } from '@langchain/core/messages'
 import { getProviderConfig, migrateApiKeyToProviderConfig, ProviderConfig } from './storage'
 import axios from 'axios'
 
@@ -11,14 +12,97 @@ export interface ChatModelConfig {
   streaming: boolean
 }
 
+// Store active keep-alive interval
+let keepAliveInterval: NodeJS.Timeout | null = null
+
 // Get available Ollama models
 export async function getOllamaModels(): Promise<string[]> {
   try {
-    const response = await axios.get('http://localhost:11434/api/tags')
-    return response.data.models?.map((model: any) => model.name) || []
+    const response = await fetch('http://localhost:11434/api/tags')
+    if (!response.ok) {
+      throw new Error('Failed to fetch Ollama models')
+    }
+    
+    const data = await response.json()
+    return data.models?.map((model: any) => model.name) || []
   } catch (error) {
-    console.log('Ollama not running or no models found:', error)
+    console.error('Error fetching Ollama models:', error)
     return []
+  }
+}
+
+// Warm up Ollama model by loading it into memory
+export async function warmUpOllamaModel(modelName: string): Promise<void> {
+  try {
+    console.log(`[chat-providers] Warming up Ollama model: ${modelName}`)
+    
+    const chatModel = new ChatOllama({
+      model: modelName,
+      baseUrl: 'http://localhost:11434',
+      temperature: 0.7
+    })
+    
+    // Send a minimal message to load the model into memory
+    const warmUpMessage = new HumanMessage('Hi')
+    await chatModel.invoke([warmUpMessage])
+    
+    console.log(`[chat-providers] Successfully warmed up Ollama model: ${modelName}`)
+  } catch (error) {
+    console.error(`[chat-providers] Failed to warm up Ollama model ${modelName}:`, error)
+    // Don't throw - warming up is optional optimization
+  }
+}
+
+// Keep Ollama model warm with periodic pings
+export function startOllamaKeepAlive(modelName: string, intervalMs: number = 4 * 60 * 1000): void {
+  // Stop any existing keep-alive
+  stopOllamaKeepAlive()
+  
+  console.log(`[chat-providers] Starting keep-alive for Ollama model: ${modelName} (interval: ${intervalMs}ms)`)
+  
+  // Initial warm-up
+  warmUpOllamaModel(modelName).catch(error => {
+    console.error('[chat-providers] Initial warm-up failed:', error)
+  })
+  
+  // Set up periodic warm-up
+  keepAliveInterval = setInterval(() => {
+    console.log(`[chat-providers] Keep-alive ping for model: ${modelName}`)
+    warmUpOllamaModel(modelName).catch(error => {
+      console.error('[chat-providers] Keep-alive ping failed:', error)
+    })
+  }, intervalMs)
+}
+
+// Stop the keep-alive mechanism
+export function stopOllamaKeepAlive(): void {
+  if (keepAliveInterval) {
+    console.log('[chat-providers] Stopping Ollama keep-alive')
+    clearInterval(keepAliveInterval)
+    keepAliveInterval = null
+  }
+}
+
+// Warm up the currently selected model if it's Ollama
+export async function warmUpSelectedModel(): Promise<void> {
+  try {
+    const config = await getProviderConfig()
+    
+    if (config?.selectedProvider === 'ollama' && config.providers.ollama?.model) {
+      const modelName = config.providers.ollama.model
+      
+      // Check if Ollama is running first
+      const models = await getOllamaModels()
+      if (models.includes(modelName)) {
+        // Start keep-alive instead of just warming up once
+        startOllamaKeepAlive(modelName)
+      }
+    } else {
+      // Stop keep-alive if not using Ollama
+      stopOllamaKeepAlive()
+    }
+  } catch (error) {
+    console.error('[chat-providers] Failed to check for model warm-up:', error)
   }
 }
 
