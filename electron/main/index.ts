@@ -60,7 +60,11 @@ const indexHtml = path.join(RENDERER_DIST, 'index.html')
 async function createWindow() {
   win = new BrowserWindow({
     title: 'Loadout',
-    icon: path.join(process.env.VITE_PUBLIC, 'favicon.ico'),
+    icon: process.platform === 'darwin' 
+      ? path.join(__dirname, '../../build/icons/icon.icns')
+      : process.platform === 'win32'
+      ? path.join(__dirname, '../../build/icons/icon.ico')
+      : path.join(__dirname, '../../build/icons/icon.png'),
     frame: false,
     titleBarStyle: 'hiddenInset',
     width: 1200,

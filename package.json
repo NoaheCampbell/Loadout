@@ -23,6 +23,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm run generate-icons",
     "build": "tsc && vite build",
     "build:app": "npm run build && electron-builder",
     "build:mac": "npm run build && electron-builder --mac",
@@ -38,6 +39,7 @@
     "test": "vitest run",
     "verify": "node scripts/verify-setup.js",
     "setup:build": "node scripts/setup-build.js",
+    "generate-icons": "node scripts/generate-icons.js",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
@@ -81,6 +83,7 @@
     "postcss-import": "^16.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sharp": "^0.34.2",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.4.2",
     "vite": "^5.4.11",

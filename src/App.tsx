@@ -11,7 +11,8 @@ import WorkflowModal from './components/WorkflowModal'
 import { GitBranch } from 'lucide-react'
 import toast from 'react-hot-toast'
 import './App.css'
-
+// Import logo as module to ensure it's bundled correctly
+import logoUrl from '/Loadout.png'
 function App() {
   const { theme, setProjects } = useStore()
   const [currentRoute, setCurrentRoute] = useState('main')
@@ -106,7 +107,17 @@ function App() {
         <div className="flex items-center h-14 px-4">
           {/* Add padding on macOS to account for traffic lights */}
           <div className={`flex items-center ${typeof window !== 'undefined' && window.electron?.platform === 'darwin' ? 'ml-20' : ''}`}>
-            <img src="/favicon.ico" alt="Loadout" className="h-9 w-auto max-w-none" />
+            <img 
+              src={logoUrl} 
+              alt="Loadout" 
+              className="h-9 w-auto max-w-none"
+              onError={(e) => {
+                // Fallback to text if image fails to load
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                console.error('Failed to load logo');
+              }}
+            />
             <span className="ml-2 text-lg font-semibold">Loadout</span>
           </div>
           <div className="ml-auto flex items-center space-x-4">

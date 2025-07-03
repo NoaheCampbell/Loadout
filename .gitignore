@@ -31,3 +31,10 @@ yarn.lock
 /test-results/
 /playwright-report/
 /playwright/.cache/
+
+# Generated icon files
+build/icons/*.png
+build/icons/*.ico
+build/icons/*.icns
+# Keep the directory structure
+!build/icons/.gitkeep
