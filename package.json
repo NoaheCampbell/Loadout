@@ -1,7 +1,7 @@
 {
   "name": "loadout",
   "productName": "Loadout",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "main": "dist-electron/main/index.js",
   "description": "AI-first project generator for developers.",
   "author": "Noah Campbell <your.email@example.com>",
