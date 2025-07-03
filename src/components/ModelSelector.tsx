@@ -13,7 +13,9 @@ const PROVIDER_INFO = {
     models: {
       'gpt-4': 'GPT-4',
       'gpt-4-turbo-preview': 'GPT-4 Turbo',
-      'gpt-3.5-turbo': 'GPT-3.5 Turbo'
+      'gpt-3.5-turbo': 'GPT-3.5 Turbo',
+      'gpt-4o': 'GPT-4o',
+      'gpt-4o-mini': 'GPT-4o Mini',
     }
   },
   anthropic: {

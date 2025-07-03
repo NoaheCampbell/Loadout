@@ -13,7 +13,7 @@ interface ParsedContent {
   content: string
 }
 
-function parseMessageContent(content: string): ParsedContent[] {
+function parseMessageContent(content: string, isStreaming: boolean = false): ParsedContent[] {
   const parts: ParsedContent[] = []
   
   // Regular expression to match thinking tags (including incomplete ones)
@@ -23,6 +23,16 @@ function parseMessageContent(content: string): ParsedContent[] {
   
   while ((match = thinkingRegex.exec(content)) !== null) {
     const hasClosingTag = match[0].includes('</think>')
+    
+    // Skip incomplete thinking tags if not streaming
+    if (!hasClosingTag && !isStreaming) {
+      // Just add the remaining content as text
+      const remainingContent = content.slice(match.index).trim()
+      if (remainingContent) {
+        parts.push({ type: 'text', content: remainingContent })
+      }
+      break
+    }
     
     // Add text before the thinking tag
     if (match.index > lastIndex) {
@@ -34,7 +44,7 @@ function parseMessageContent(content: string): ParsedContent[] {
     
     // Add thinking content
     const thinkingContent = match[1].trim()
-    if (thinkingContent || !hasClosingTag) { // Include even if empty when streaming
+    if (thinkingContent || (!hasClosingTag && isStreaming)) { // Only include empty when streaming
       parts.push({ type: 'thinking', content: thinkingContent })
     }
     
@@ -65,7 +75,7 @@ function parseMessageContent(content: string): ParsedContent[] {
 
 export default function ChatMessage({ message, isStreaming }: ChatMessageProps) {
   const [expandedThinking, setExpandedThinking] = useState<Set<number>>(new Set())
-  const parsedContent = parseMessageContent(message.content)
+  const parsedContent = parseMessageContent(message.content, isStreaming)
   
   const toggleThinking = (index: number) => {
     const newExpanded = new Set(expandedThinking)
