@@ -49,30 +49,29 @@ Be encouraging and constructive. Ask questions that help the user think more dee
 
 Remember, your goal is to help them develop a clear, well-thought-out project concept that can be turned into a comprehensive PRD and implementation plan.`
 
-const UI_CHAT_SYSTEM_PROMPT = `You are a helpful AI assistant specialized in UI design and React component development. You help users understand and modify their generated UI components.
+const UI_CHAT_SYSTEM_PROMPT = `You are a helpful AI assistant specialized in UI design and React component development. You have direct access to modify the UI code.
 
-You have access to the actual UI code files, so you can see exactly what has been generated and help debug issues or suggest specific changes.
+You have access to the actual UI code files, so you can see exactly what has been generated and can make changes when requested.
 
 When a user asks about their UI, you should:
 1. Answer questions about the current UI design, components, and structure
 2. Reference the actual code when discussing components
 3. Help them understand how components work and interact
 4. Suggest improvements or alternatives when asked
-5. Identify when they want to make specific changes to the UI
 
-When responding to edit requests:
-- Clearly acknowledge what changes they want
+When a user asks you to make changes (e.g., "change the color to blue", "add a footer", "make it more modern"):
+- I will automatically apply the changes you describe
 - Be specific about what will be modified
-- If the request is unclear, ask for clarification
-- Always end edit requests with: "Would you like me to regenerate the UI with these changes?"
+- Explain what changes you're making
+- The UI will be regenerated automatically based on your response
 
 For questions (not edits):
 - Provide helpful explanations about the UI
 - Suggest best practices and modern design patterns
 - Reference the actual components and their code
-- Do NOT end with regeneration prompts unless they explicitly ask for changes
+- Help debug issues
 
-Remember: You can see all their generated UI files and code, so provide specific, helpful guidance.`
+Important: You have direct access to modify the code. When users ask for changes, describe what you'll change and the UI will be automatically updated.`
 
 export async function startProjectChat(initialIdea: string, event: Electron.IpcMainInvokeEvent): Promise<void> {
   const generationId = `chat-${Date.now()}`
@@ -297,16 +296,33 @@ function analyzeIfEditRequest(userMessage: string, aiResponse: string): boolean 
   const editKeywords = [
     'change', 'modify', 'update', 'edit', 'make it', 'add', 'remove', 'delete',
     'replace', 'move', 'redesign', 'restyle', 'different', 'instead of',
-    'can you make', 'please make', 'i want', "i'd like", 'transform', 'convert'
+    'can you make', 'please make', 'i want', "i'd like", 'transform', 'convert',
+    'fix', 'adjust', 'set', 'switch', 'turn', 'enable', 'disable', 'improve',
+    'enhance', 'bigger', 'smaller', 'larger', 'wider', 'narrower', 'taller',
+    'shorter', 'more', 'less', 'better', 'modern', 'simple', 'complex'
   ]
   
   const lowerMessage = userMessage.toLowerCase()
   const hasEditKeyword = editKeywords.some(keyword => lowerMessage.includes(keyword))
   
-  // Check if AI response indicates it understood an edit request
-  const aiConfirmsEdit = aiResponse.toLowerCase().includes('regenerate the ui with these changes')
+  // Also check if the user is giving direct instructions
+  const directInstructions = [
+    'the button should', 'the header should', 'it should', 'make the',
+    'i need', 'we need', 'let\'s', 'please', 'could you', 'can you',
+    'would you', 'color', 'background', 'font', 'size', 'margin', 'padding',
+    'border', 'layout', 'component', 'section', 'element'
+  ]
   
-  return hasEditKeyword || aiConfirmsEdit
+  const hasDirectInstruction = directInstructions.some(instruction => lowerMessage.includes(instruction))
+  
+  // Check if AI response indicates understanding of changes
+  const aiLower = aiResponse.toLowerCase()
+  const aiUnderstandsChange = aiLower.includes('will') || aiLower.includes('i\'ll') || 
+                              aiLower.includes('changing') || aiLower.includes('updating') ||
+                              aiLower.includes('modifying') || aiLower.includes('adding') ||
+                              aiLower.includes('removing') || aiLower.includes('let me')
+  
+  return (hasEditKeyword || hasDirectInstruction) && (aiUnderstandsChange || hasEditKeyword)
 }
 
 // Extract specific instructions for UI regeneration
@@ -315,12 +331,14 @@ function extractEditInstructions(userMessage: string, aiResponse: string): strin
   const instructions = `
 USER REQUEST: ${userMessage}
 
-AI INTERPRETATION: ${aiResponse}
+AI INTERPRETATION AND CHANGES TO MAKE:
+${aiResponse}
 
-SPECIFIC CHANGES TO IMPLEMENT:
-- Focus on the user's specific requests mentioned above
+IMPLEMENTATION NOTES:
+- Apply all changes discussed above
 - Maintain existing functionality while implementing the requested changes
 - Keep the same component structure unless explicitly asked to change it
+- Use the currently selected AI model's capabilities
   `.trim()
   
   return instructions

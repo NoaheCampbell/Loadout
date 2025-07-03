@@ -234,7 +234,6 @@ export default function UiTab() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false)
   const [showChat, setShowChat] = useState(false)
-  const [pendingEditInstructions, setPendingEditInstructions] = useState<string | undefined>(undefined)
   
   // Stop preview server when component unmounts or project changes
   useEffect(() => {
@@ -334,8 +333,103 @@ export default function UiTab() {
       
       if (result.success && result.data) {
         if (result.data.isEditRequest && result.data.editInstructions) {
-          // Store the edit instructions for when user clicks regenerate
-          setPendingEditInstructions(result.data.editInstructions)
+          // Automatically trigger regeneration when edit is requested
+          console.log('Edit request detected, automatically regenerating UI...')
+          
+          // Add a system message indicating regeneration is starting
+          const regeneratingMessage: ChatMessage = {
+            id: nanoid(),
+            role: 'assistant',
+            content: '🔄 I understand your request. Regenerating the UI with your changes...',
+            timestamp: new Date().toISOString()
+          }
+          
+          setChatMessages(prev => [...prev, regeneratingMessage])
+          
+          // Send to chat window if open
+          if (chatIsOpen) {
+            window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
+              type: 'new-message',
+              message: regeneratingMessage
+            })
+          }
+          
+          // Trigger regeneration automatically
+          if (selectedProjectId) {
+            setGenerating(true)
+            clearProgress()
+            
+            try {
+              const unsubscribe = ipc.onGenerationProgress((progress: GenerationProgress) => {
+                console.log('Auto UI Regeneration: Progress update:', progress)
+                addProgress(progress)
+              })
+
+              const regenResult = await ipc.regenerateUI(selectedProjectId, result.data.editInstructions)
+              
+              if (regenResult.success) {
+                ipc.playCompletionSound()
+                
+                await new Promise(resolve => setTimeout(resolve, 100))
+                
+                if (regenResult.data) {
+                  setProjectData(regenResult.data)
+                  setRefreshKey(prev => prev + 1)
+                } else {
+                  const updatedProjectData = await ipc.loadProject(selectedProjectId)
+                  if (updatedProjectData) {
+                    setProjectData(updatedProjectData)
+                    setRefreshKey(prev => prev + 1)
+                  }
+                }
+                
+                // Add success message
+                const successMessage: ChatMessage = {
+                  id: nanoid(),
+                  role: 'assistant',
+                  content: '✨ UI has been successfully regenerated with your requested changes! The preview should now reflect the updates.',
+                  timestamp: new Date().toISOString()
+                }
+                
+                setChatMessages(prev => [...prev, successMessage])
+                
+                if (chatIsOpen) {
+                  window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
+                    type: 'new-message',
+                    message: successMessage
+                  })
+                }
+              } else {
+                // Add error message
+                const errorMessage: ChatMessage = {
+                  id: nanoid(),
+                  role: 'assistant',
+                  content: `❌ Sorry, I encountered an error while regenerating the UI: ${regenResult.error || 'Unknown error'}. Please try again or rephrase your request.`,
+                  timestamp: new Date().toISOString()
+                }
+                
+                setChatMessages(prev => [...prev, errorMessage])
+                
+                if (chatIsOpen) {
+                  window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
+                    type: 'new-message',
+                    message: errorMessage
+                  })
+                }
+                
+                toast.error(regenResult.error || 'Failed to regenerate UI')
+              }
+
+              unsubscribe()
+              setGenerating(false)
+            } catch (error) {
+              console.error('Auto regeneration error:', error)
+              setGenerating(false)
+              toast.error('Failed to regenerate UI')
+            }
+          } else {
+            toast.error('No project selected for regeneration')
+          }
         }
       }
     } catch (error) {
@@ -713,70 +807,6 @@ export default function UiTab() {
     
     // Process the message
     await processUserMessage(content, userMessage)
-  }
-
-  const handleChatRegenerate = async () => {
-    if (!pendingEditInstructions || !selectedProjectId) return
-    
-    setGenerating(true)
-    clearProgress()
-    toast('Regenerating UI with your requested changes...')
-
-    try {
-      const unsubscribe = ipc.onGenerationProgress((progress: GenerationProgress) => {
-        console.log('UI Chat Regeneration: Received progress update:', progress)
-        addProgress(progress)
-      })
-
-      const result = await ipc.regenerateUI(selectedProjectId, pendingEditInstructions)
-      
-      if (result.success) {
-        toast.success('UI regenerated with your changes!')
-        ipc.playCompletionSound()
-        
-        await new Promise(resolve => setTimeout(resolve, 100))
-        
-        if (result.data) {
-          setProjectData(result.data)
-          setRefreshKey(prev => prev + 1)
-        } else {
-          const updatedProjectData = await ipc.loadProject(selectedProjectId)
-          if (updatedProjectData) {
-            setProjectData(updatedProjectData)
-            setRefreshKey(prev => prev + 1)
-          }
-        }
-        
-        // Clear pending instructions after successful regeneration
-        setPendingEditInstructions(undefined)
-        
-        // Add a system message confirming the regeneration
-        const confirmMessage: ChatMessage = {
-          id: nanoid(),
-          role: 'assistant',
-          content: '✨ UI has been regenerated with your requested changes!',
-          timestamp: new Date().toISOString()
-        }
-        setChatMessages(prev => [...prev, confirmMessage])
-        
-        // Also send to chat window if open
-        if (showChat) {
-          window.ipcRenderer.send(IPC_CHANNELS.CHAT_WINDOW_MESSAGE, {
-            type: 'new-message',
-            message: confirmMessage
-          })
-        }
-      } else {
-        toast.error(result.error || 'Failed to regenerate UI')
-      }
-
-      unsubscribe()
-    } catch (error) {
-      console.error('Chat regeneration error:', error)
-      toast.error('An error occurred while regenerating the UI')
-    } finally {
-      setGenerating(false)
-    }
   }
 
   return (

@@ -160,8 +160,9 @@ ollama pull llama2
 
 ### Chat Interface
 - Stream responses in real-time
+- Direct UI modifications - just ask for changes and they're applied automatically
 - Maintain context across conversations
-- Regenerate specific components
+- Uses your currently selected AI model
 - Export chat history with projects
 
 ### UI Generation
