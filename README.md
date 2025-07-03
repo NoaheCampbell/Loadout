@@ -1,164 +1,116 @@
-# electron-vite-react
-
-[![awesome-vite](https://awesome.re/mentioned-badge.svg)](https://github.com/vitejs/awesome-vite)
-![GitHub stars](https://img.shields.io/github/stars/caoxiemeihao/vite-react-electron?color=fa6470)
-![GitHub issues](https://img.shields.io/github/issues/caoxiemeihao/vite-react-electron?color=d8b22d)
-![GitHub license](https://img.shields.io/github/license/caoxiemeihao/vite-react-electron)
-[![Required Node.JS >= 14.18.0 || >=16.0.0](https://img.shields.io/static/v1?label=node&message=14.18.0%20||%20%3E=16.0.0&logo=node.js&color=3f893e)](https://nodejs.org/about/releases)
-
-English | [简体中文](README.zh-CN.md)
-
-## 👀 Overview
-
-📦 Ready out of the box  
-🎯 Based on the official [template-react-ts](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts), project structure will be familiar to you  
-🌱 Easily extendable and customizable  
-💪 Supports Node.js API in the renderer process  
-🔩 Supports C/C++ native addons  
-🐞 Debugger configuration included  
-🖥 Easy to implement multiple windows  
-
-## 🛫 Quick Setup
-
-```sh
-# clone the project
-git clone https://github.com/electron-vite/electron-vite-react.git
-
-# enter the project directory
-cd electron-vite-react
-
-# install dependency
-npm install
-
-# develop
-npm run dev
-```
-
-## 🐞 Debug
-
-![electron-vite-react-debug.gif](/electron-vite-react-debug.gif)
-
-## 📂 Directory structure
-
-Familiar React application structure, just with `electron` folder on the top :wink:  
-*Files in this folder will be separated from your React application and built into `dist-electron`*  
-
-```tree
-├── electron                                 Electron-related code
-│   ├── main                                 Main-process source code
-│   └── preload                              Preload-scripts source code
-│
-├── release                                  Generated after production build, contains executables
-│   └── {version}
-│       ├── {os}-{os_arch}                   Contains unpacked application executable
-│       └── {app_name}_{version}.{ext}       Installer for the application
-│
-├── public                                   Static assets
-└── src                                      Renderer source code, your React application
-```
-
-<!--
-## 🚨 Be aware
-
-This template integrates Node.js API to the renderer process by default. If you want to follow **Electron Security Concerns** you might want to disable this feature. You will have to expose needed API by yourself.  
-
-To get started, remove the option as shown below. This will [modify the Vite configuration and disable this feature](https://github.com/electron-vite/vite-plugin-electron-renderer#config-presets-opinionated).
-
-```diff
-# vite.config.ts
-
-export default {
-  plugins: [
-    ...
--   // Use Node.js API in the Renderer-process
--   renderer({
--     nodeIntegration: true,
--   }),
-    ...
-  ],
-}
-```
--->
-
-## 🔧 Additional features
-
-1. electron-updater 👉 [see docs](src/components/update/README.md)
-1. playwright
-
-## ❔ FAQ
-
-- [C/C++ addons, Node.js modules - Pre-Bundling](https://github.com/electron-vite/vite-plugin-electron-renderer#dependency-pre-bundling)
-- [dependencies vs devDependencies](https://github.com/electron-vite/vite-plugin-electron-renderer#dependencies-vs-devdependencies)
-
 # Loadout
 
-🚀 Transform your raw project ideas into complete development blueprints using AI.
+🚀 **AI-powered project blueprint generator** - Transform your ideas into complete React applications with comprehensive documentation, development roadmaps, and production-ready UI components.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![Platform](https://img.shields.io/badge/platform-macOS%20|%20Windows%20|%20Linux-lightgrey.svg)
 
-## ✨ What is Loadout?
+## ✨ Overview
 
-Loadout is a desktop application that uses LangGraph and OpenAI to transform your project ideas into comprehensive development blueprints. It generates:
+Loadout is a desktop application that uses advanced AI models to transform your project ideas into complete development blueprints. Simply describe what you want to build, and Loadout generates everything you need to start coding immediately.
 
-- 📋 **Product Requirements Documents (PRD)** - Structured project specifications
-- ✅ **Development Checklists** - Phase-based implementation roadmaps  
-- 🧠 **Technical Decisions** - Documented assumptions and architecture choices
-- 🎨 **UI Components** - Ready-to-use React/Tailwind code with live preview
+### What You Get
+
+- 📋 **Product Requirements Document (PRD)** - Detailed project specifications with goals, constraints, and success criteria
+- ✅ **Development Checklist** - Phase-based implementation roadmap with actionable tasks
+- 🧠 **Technical Decisions Log** - Documented assumptions and architectural choices
+- 🎨 **Production-Ready UI** - Complete React/Tailwind components with live preview
+- 💬 **AI Chat Assistant** - Refine and iterate on your generated components
+- 📦 **Export Everything** - Download your complete project as organized files
 
 ## 🎯 Key Features
 
-- **AI-Powered Workflow** - Orchestrated by LangGraph for consistent, high-quality outputs
-- **Real-time Progress** - Watch as your idea transforms through each generation phase
-- **Interactive Preview** - See your generated UI components come to life instantly
-- **Export Everything** - Download your complete project blueprint as organized files
-- **Local Storage** - All projects saved securely on your machine
+### Multi-Provider AI Support
+- **OpenAI** - GPT-4, GPT-4 Turbo, GPT-3.5 Turbo
+- **Anthropic** - Claude 3.5 Sonnet, Claude 3 Opus/Sonnet/Haiku  
+- **Ollama** - Run models locally with no API key required
+
+### Advanced Capabilities
+- **LangGraph Workflow** - Sophisticated AI orchestration for consistent outputs
+- **Streaming Responses** - Real-time generation with progress tracking
+- **Live UI Preview** - Instant component rendering with hot reload
+- **Chat Interface** - Iterate on your UI with conversational AI
+- **Project Management** - Save, organize, and revisit all your ideas
+- **Dark/Light Theme** - Beautiful UI that's easy on the eyes
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Node.js 18+ and npm
-- OpenAI API key with GPT-4 access
+- At least one AI provider:
+  - OpenAI API key (for GPT models)
+  - Anthropic API key (for Claude models)  
+  - Ollama installed locally (for free local models)
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/NoaheCampbell/loadout.git
 cd loadout
 
 # Install dependencies
 npm install
 
-# Create environment file
-echo "OPENAI_API_KEY=sk-your-api-key-here" > .env.local
-
 # Start the application
 npm run dev
 ```
 
+### First Run
+
+1. Click the settings icon to configure your AI provider
+2. Enter your API key (or select Ollama for local models)
+3. Create a new project and describe your idea
+4. Watch as Loadout generates your complete blueprint!
+
 ## 📖 How It Works
 
-1. **Enter Your Idea** - Describe your project in plain English
-2. **Watch AI Work** - LangGraph orchestrates multiple AI agents to analyze and plan
-3. **Review & Refine** - Browse through generated PRD, checklist, and UI components
-4. **Export & Build** - Download everything and start coding with a clear blueprint
+### The LangGraph Workflow
 
-## 🏗️ Architecture
+```mermaid
+graph LR
+    A[Your Idea] --> B[Process & Refine]
+    B --> C[Generate PRD]
+    C --> D[Create Checklist]
+    C --> E[Document Decisions]
+    C --> F[Plan UI Architecture]
+    D & E & F --> G[Generate Components]
+    G --> H[Validate & Export]
+```
 
-Loadout uses a sophisticated LangGraph workflow:
+Each step is powered by specialized AI agents that build upon previous outputs, ensuring consistency and completeness across all generated artifacts.
+
+### Workflow Visualization
+
+Click the "Workflow" button in the header to see a detailed, interactive diagram of how Loadout processes your ideas. The visualization includes:
+- Real-time progress tracking during generation
+- Validation steps for each phase
+- Parallel processing indicators
+- Provider-specific features
+
+## 🏗️ Project Structure
+
+Your generated projects include:
 
 ```
-Idea → PRD → Checklist → UI Plan → Component Generation → Export
+your-project/
+├── PRD.md                    # Product requirements document
+├── CHECKLIST.md             # Development roadmap
+├── DECISIONS.md             # Technical decisions log
+├── src/
+│   ├── App.tsx             # Main application component
+│   ├── components/         # Generated UI components
+│   ├── _setup.js          # Project setup instructions
+│   └── index.html         # Preview HTML file
+└── project.json            # Project metadata
 ```
 
-Each step is powered by specialized AI agents that build upon previous outputs, ensuring consistency and completeness.
+## 📁 Storage Locations
 
-## 📁 Project Storage
+Projects are stored locally on your machine:
 
-Your projects are stored locally at:
 - **macOS**: `~/Library/Application Support/Loadout/projects/`
 - **Windows**: `%APPDATA%/Loadout/projects/`
 - **Linux**: `~/.config/Loadout/projects/`
@@ -172,30 +124,112 @@ npm run dev
 # Build for production
 npm run build
 
+# Package for distribution
+npm run dist
+
 # Run tests
 npm test
 
-# Verify setup
-npm run verify
+# Type checking
+npm run typecheck
 ```
+
+## 🔧 Configuration
+
+### AI Providers
+
+Configure your preferred AI provider in Settings:
+
+1. **OpenAI** - Best for general-purpose generation
+2. **Anthropic** - Excellent for complex reasoning
+3. **Ollama** - Free local models, no internet required
+
+### Ollama Setup
+
+```bash
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Pull a model
+ollama pull llama2
+
+# Loadout will auto-detect available models
+```
+
+## 🎨 Features in Detail
+
+### Chat Interface
+- Stream responses in real-time
+- Maintain context across conversations
+- Regenerate specific components
+- Export chat history with projects
+
+### UI Generation
+- Multi-file component generation
+- Automatic import resolution
+- Tailwind CSS integration
+- Responsive design patterns
+- Accessibility considerations
+
+### Export Options
+- Complete project ZIP file
+- Individual file downloads
+- Copy-to-clipboard for quick sharing
+- Direct integration with code editors
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Setup
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## 📄 License
 
-MIT License - see LICENSE file for details
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
-Built with:
-- [Electron](https://www.electronjs.org/) - Cross-platform desktop apps
-- [React](https://react.dev/) - UI framework
+Built with amazing technologies:
+
+- [Electron](https://www.electronjs.org/) - Cross-platform desktop framework
+- [React](https://react.dev/) - UI library
 - [LangGraph](https://github.com/langchain-ai/langgraph) - AI workflow orchestration
-- [OpenAI](https://openai.com/) - Language models
-- [Tailwind CSS](https://tailwindcss.com/) - Styling
+- [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS framework
+- [Monaco Editor](https://microsoft.github.io/monaco-editor/) - Code editor
+- [Zustand](https://zustand-demo.pmnd.rs/) - State management
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**API Key Not Working**
+- Ensure your API key has the necessary permissions
+- Check your billing/usage limits
+- Verify the key is correctly entered in Settings
+
+**Ollama Connection Failed**
+- Make sure Ollama is running (`ollama serve`)
+- Check if models are downloaded (`ollama list`)
+- Verify Ollama is accessible at `http://localhost:11434`
+
+**Generation Errors**
+- Try a different AI model
+- Simplify your project description
+- Check the console for detailed error messages
+
+## 📞 Support
+
+- 📧 Email: support@loadout.app
+- 💬 Discord: [Join our community](https://discord.gg/loadout)
+- 🐛 Issues: [GitHub Issues](https://github.com/yourusername/loadout/issues)
 
 ---
 
-Made with ❤️ for AI-first developers
+<p align="center">Made with ❤️ by developers, for developers</p>
+<p align="center">Transform your ideas into reality with Loadout</p>
