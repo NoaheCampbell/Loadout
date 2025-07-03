@@ -1,10 +1,9 @@
-import { FileText, CheckSquare, Palette, Brain, Download, GitBranch } from 'lucide-react'
+import { FileText, CheckSquare, Palette, Brain, Download } from 'lucide-react'
 import { useStore } from '../store'
 import IdeaTab from './tabs/IdeaTab'
 import PrdTab from './tabs/PrdTab'
 import ChecklistTab from './tabs/ChecklistTab'
 import UiTab from './tabs/UiTab'
-import { WorkflowTab } from './tabs/WorkflowTab'
 import toast from 'react-hot-toast'
 import JSZip from 'jszip'
 import { saveAs } from 'file-saver'
@@ -41,7 +40,6 @@ const tabs = [
   { id: 'prd' as const, label: 'PRD', icon: FileText, color: 'blue' },
   { id: 'checklist' as const, label: 'Checklist', icon: CheckSquare, color: 'green' },
   { id: 'ui' as const, label: 'UI', icon: Palette, color: 'pink' },
-      { id: 'workflow' as const, label: 'Workflow', icon: GitBranch, color: 'purple' },
 ]
 
 export default function Workspace() {
@@ -215,8 +213,6 @@ ${currentProjectData.uiStrategy === 'v0' ? '## v0.dev Integration\n\nThis projec
         return <ChecklistTab />
       case 'ui':
         return <UiTab />
-      case 'workflow':
-        return <WorkflowTab />
       default:
         return <IdeaTab />
     }

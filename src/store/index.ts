@@ -10,10 +10,10 @@ interface AppState {
   // Generation state
   isGenerating: boolean;
   generationProgress: GenerationProgress[];
-  currentTab: 'idea' | 'prd' | 'checklist' | 'ui' | 'workflow';
+  currentTab: 'idea' | 'prd' | 'checklist' | 'ui';
   
   // UI state
-  uiViewMode: 'preview' | 'code';
+  uiViewMode: 'preview' | 'code' | 'files';
   theme: 'light' | 'dark';
   
   // Actions
@@ -25,7 +25,7 @@ interface AppState {
   addProgress: (progress: GenerationProgress) => void;
   clearProgress: () => void;
   setCurrentTab: (tab: AppState['currentTab']) => void;
-  setUiViewMode: (mode: 'preview' | 'code') => void;
+  setUiViewMode: (mode: 'preview' | 'code' | 'files') => void;
   setTheme: (theme: 'light' | 'dark') => void;
 }
 

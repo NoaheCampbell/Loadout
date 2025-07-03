@@ -7,6 +7,8 @@ import Workspace from './components/Workspace'
 import ThemeToggle from './components/ThemeToggle'
 import ChatWindow from './components/ChatWindow'
 import SettingsModal from './components/SettingsModal'
+import WorkflowModal from './components/WorkflowModal'
+import { GitBranch } from 'lucide-react'
 import toast from 'react-hot-toast'
 import './App.css'
 
@@ -14,6 +16,7 @@ function App() {
   const { theme, setProjects } = useStore()
   const [currentRoute, setCurrentRoute] = useState('main')
   const [showSettings, setShowSettings] = useState(false)
+  const [showWorkflow, setShowWorkflow] = useState(false)
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null)
 
   // Check route on mount and hash changes
@@ -108,6 +111,16 @@ function App() {
           </div>
           <div className="ml-auto flex items-center space-x-4">
             <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+              <button
+                onClick={() => setShowWorkflow(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg transition-all duration-200"
+                title="View LangGraph Workflow - See how Loadout generates projects"
+              >
+                <GitBranch className="w-4 h-4" />
+                <span className="hidden sm:inline font-medium">Workflow</span>
+              </button>
+            </div>
+            <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
               <ThemeToggle />
             </div>
           </div>
@@ -130,6 +143,12 @@ function App() {
           // Re-check API key after closing settings
           ipc.checkApiKey().then(setHasApiKey)
         }} 
+      />
+
+      {/* Workflow Modal */}
+      <WorkflowModal 
+        isOpen={showWorkflow} 
+        onClose={() => setShowWorkflow(false)} 
       />
 
       {/* Toast Notifications */}

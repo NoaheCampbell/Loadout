@@ -191,12 +191,9 @@ export function WorkflowTab() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">LangGraph Workflow</h2>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
-                Visual representation of the Loadout project generation workflow with validation steps
-              </p>
-            </div>
+            <p className="text-gray-600 dark:text-gray-400 text-sm">
+              Visual representation of the Loadout project generation workflow with validation steps
+            </p>
             
             {/* Zoom controls */}
             <div className="flex items-center gap-2">

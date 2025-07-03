@@ -318,9 +318,14 @@ export default function Sidebar({ onOpenSettings }: SidebarProps) {
       {isGenerating && (
         <div className="border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="p-4 pb-2">
-            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              🦜️🔗 LangGraph Workflow
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                🦜️🔗 LangGraph Workflow
+              </h3>
+              <span className="text-xs text-gray-400 dark:text-gray-500" title="Real-time progress of AI generation workflow">
+                Live Progress
+              </span>
+            </div>
           </div>
           <div 
             className="overflow-y-auto px-4 pb-4"

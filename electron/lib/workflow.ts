@@ -322,15 +322,25 @@ function createWorkflow() {
 // Generate Mermaid diagram of the workflow with validation details
 export function visualizeWorkflow(): string {
   const mermaid = `graph TD
-    Start([Start]) --> ProcessIdea["processIdea<br/>✓ Validate idea text<br/>✓ Clean title formatting<br/>✓ Generate description"]
+    Start([Start]) --> ProviderSelection{"Provider Selection<br/>OpenAI / Anthropic / Ollama"}
     
-    ProcessIdea -->|Success| GeneratePRD["generatePRD<br/>✓ Parse JSON response<br/>✓ Validate PRD structure<br/>✓ Fallback for missing fields"]
+    ProviderSelection -->|OpenAI| OpenAIModels["OpenAI Models<br/>• gpt-4<br/>• gpt-4-turbo-preview<br/>• gpt-3.5-turbo"]
+    ProviderSelection -->|Anthropic| AnthropicModels["Anthropic Models<br/>• claude-3-5-sonnet<br/>• claude-3-opus<br/>• claude-3-sonnet<br/>• claude-3-haiku"]
+    ProviderSelection -->|Ollama| OllamaModels["Ollama Models<br/>• Local models<br/>• No API key required<br/>• Keep-alive feature"]
+    
+    OpenAIModels --> InitializeLLM["Initialize LLM<br/>✓ Load API keys<br/>✓ Configure model<br/>✓ Set temperature<br/>✓ Enable streaming"]
+    AnthropicModels --> InitializeLLM
+    OllamaModels --> InitializeLLM
+    
+    InitializeLLM --> ProcessIdea["processIdea<br/>✓ Validate idea text<br/>✓ Clean title formatting<br/>✓ Generate description<br/>✓ Stream response"]
+    
+    ProcessIdea -->|Success| GeneratePRD["generatePRD<br/>✓ Parse JSON response<br/>✓ Validate PRD structure<br/>✓ Stream generation<br/>✓ Fallback for missing fields"]
     ProcessIdea -->|Error| ErrorEnd[["❌ Error: Failed to<br/>process idea"]]
     
     GeneratePRD -->|Success| Parallel{Parallel Execution}
     GeneratePRD -->|Error<br/>Continue anyway| Parallel
     
-    Parallel --> GenerateChecklist["generateChecklist<br/>✓ Check PRD exists<br/>✓ Generate phase-based tasks<br/>✓ Return empty array on fail"]
+    Parallel --> GenerateChecklist["generateChecklist<br/>✓ Check PRD exists<br/>✓ Generate phase-based tasks<br/>✓ Stream progress<br/>✓ Return empty array on fail"]
     Parallel --> GenerateBrainlift["generateBrainlift<br/>✓ Check PRD.goals array<br/>✓ Parse assumptions/decisions<br/>✓ Skip if prerequisites missing"]
     Parallel --> GenerateUIPlan["generateUIPlan<br/>✓ Validate component specs<br/>✓ Check for duplicates<br/>✓ Generate guidelines<br/>✓ Fallback to minimal plan"]
     
@@ -338,7 +348,7 @@ export function visualizeWorkflow(): string {
     GenerateBrainlift --> DetermineStrategy
     GenerateUIPlan --> DetermineStrategy
     
-    DetermineStrategy -->|GPT Strategy| GenerateUI["generateUI (GPT)<br/>✓ Analyze components needed<br/>✓ Filter auth components<br/>✓ Generate in parallel<br/>✓ Validate each file<br/>✓ Retry on errors<br/>✓ Create helper files"]
+    DetermineStrategy -->|GPT Strategy| GenerateUI["generateUI (GPT)<br/>✓ Multi-file generation<br/>✓ Component parallelization<br/>✓ Stream each component<br/>✓ Validate each file<br/>✓ Retry on errors"]
     DetermineStrategy -->|v0 Strategy| GenerateV0["generateUI (v0)<br/>Generate v0 prompt"]
     
     GenerateUI --> ValidateUI{"Validation<br/>✓ Check syntax<br/>✓ Verify imports<br/>✓ No undefined refs<br/>✓ Clean auth artifacts"}
@@ -354,25 +364,34 @@ export function visualizeWorkflow(): string {
     SaveProject -->|Success| End([End])
     SaveProject -->|Error| SaveError[["❌ Error: Failed to<br/>save project"]]
     
-    %% Sub-process for UI Generation
-    subgraph "UI Generation Details"
-        UIComponents["Components:<br/>• Header<br/>• Sidebar<br/>• MainContent<br/>• Footer<br/>• Custom components"]
-        UIValidation["Each component:<br/>1. Generate code<br/>2. Validate syntax<br/>3. Check imports<br/>4. Clean auth refs<br/>5. Retry if needed"]
-        UIHelpers["Helper files:<br/>• _setup.js<br/>• _ComponentManifest.js<br/>• index.html"]
+    %% Chat Integration
+    subgraph "Chat Window Integration"
+        ChatInterface["Chat Interface<br/>• Streaming responses<br/>• Project context<br/>• Model selector<br/>• Regeneration"]
+        ChatInterface --> StreamHandler["Stream Handler<br/>• Chunk processing<br/>• Error recovery<br/>• Progress updates"]
+    end
+    
+    %% Provider Features
+    subgraph "Provider-Specific Features"
+        OllamaKeepAlive["Ollama Keep-Alive<br/>• 4-minute ping<br/>• Model stays loaded<br/>• Instant responses"]
+        StreamingAPI["Streaming API<br/>• Real-time updates<br/>• Chunk handling<br/>• Abort capability"]
     end
     
     %% Styling
+    classDef provider fill:#7950f2,stroke:#6741d9,color:#fff
     classDef error fill:#ff6b6b,stroke:#c92a2a,color:#fff
     classDef validation fill:#fab005,stroke:#f08c00,color:#000
     classDef success fill:#51cf66,stroke:#2b8a3e,color:#fff
     classDef parallel fill:#be4bdb,stroke:#9c36b5,color:#fff
     classDef process fill:#4dabf7,stroke:#1864ab,color:#fff
+    classDef chat fill:#20c997,stroke:#12b886,color:#fff
     
+    class ProviderSelection,OpenAIModels,AnthropicModels,OllamaModels provider
     class ErrorEnd,SaveError error
-    class ValidateUI,RetryGeneration,UIValidation validation
+    class ValidateUI,RetryGeneration validation
     class End,SaveProject success
     class Parallel,GenerateChecklist,GenerateBrainlift,GenerateUIPlan parallel
-    class ProcessIdea,GeneratePRD,DetermineStrategy,GenerateUI,UpdateChecklist process`
+    class ProcessIdea,GeneratePRD,DetermineStrategy,GenerateUI,UpdateChecklist,InitializeLLM process
+    class ChatInterface,StreamHandler,OllamaKeepAlive,StreamingAPI chat`
   
   return mermaid
 }
@@ -386,6 +405,27 @@ export function getWorkflowDebugInfo(): {
   return {
     nodes: [
       {
+        name: 'providerSelection',
+        description: 'Select AI provider and model',
+        validations: [
+          'Check available providers (OpenAI, Anthropic, Ollama)',
+          'Validate API keys for cloud providers',
+          'Check Ollama server availability for local models',
+          'Select appropriate model based on provider'
+        ]
+      },
+      {
+        name: 'initializeLLM',
+        description: 'Initialize language model with provider config',
+        validations: [
+          'Load provider-specific configuration',
+          'Set up API credentials',
+          'Configure model parameters (temperature, streaming)',
+          'Initialize streaming handlers',
+          'Set up Ollama keep-alive if needed'
+        ]
+      },
+      {
         name: 'processIdea',
         description: 'Process raw idea into structured format',
         validations: [
@@ -393,7 +433,8 @@ export function getWorkflowDebugInfo(): {
           'Clean title from markdown formatting',
           'Remove common prefixes (Title:, Project Title:, etc.)',
           'Ensure title is not too long (max 50 chars)',
-          'Generate description if missing'
+          'Generate description if missing',
+          'Stream response in real-time'
         ]
       },
       {
@@ -404,7 +445,8 @@ export function getWorkflowDebugInfo(): {
           'Check for required fields (problem, goals, scope, constraints, success_criteria)',
           'Ensure goals and constraints are arrays',
           'Provide fallback values for missing fields',
-          'Validate no nested checkboxes in requirements'
+          'Validate no nested checkboxes in requirements',
+          'Stream generation progress to UI'
         ]
       },
       {
@@ -415,7 +457,8 @@ export function getWorkflowDebugInfo(): {
           'Verify PRD has goals and constraints arrays',
           'Generate 7 phases with features and sub-features',
           'Ensure proper checkbox formatting',
-          'Return empty array on failure (not error)'
+          'Return empty array on failure (not error)',
+          'Stream checklist items as generated'
         ]
       },
       {
@@ -462,7 +505,30 @@ export function getWorkflowDebugInfo(): {
           'Clean auth artifacts from code',
           'Retry generation up to 2 times on validation failure',
           'Generate helper files (_setup.js, _ComponentManifest.js, index.html)',
-          'Fall back to single-file generation if multi-file fails'
+          'Fall back to single-file generation if multi-file fails',
+          'Stream component generation progress'
+        ]
+      },
+      {
+        name: 'chatIntegration',
+        description: 'Handle chat window interactions',
+        validations: [
+          'Process streaming responses',
+          'Handle chunk aggregation',
+          'Manage abort signals',
+          'Sync project context',
+          'Update UI in real-time'
+        ]
+      },
+      {
+        name: 'providerFeatures',
+        description: 'Provider-specific functionality',
+        validations: [
+          'Ollama keep-alive ping every 4 minutes',
+          'Handle API rate limits',
+          'Manage streaming protocols per provider',
+          'Handle provider-specific errors',
+          'Model warm-up for Ollama'
         ]
       },
       {
@@ -487,7 +553,9 @@ export function getWorkflowDebugInfo(): {
       }
     ],
     edges: [
-      { from: '__start__', to: 'processIdea' },
+      { from: '__start__', to: 'providerSelection' },
+      { from: 'providerSelection', to: 'initializeLLM', condition: 'Provider selected' },
+      { from: 'initializeLLM', to: 'processIdea', condition: 'LLM initialized' },
       { from: 'processIdea', to: 'generatePRD', condition: 'Always (errors stop workflow)' },
       { from: 'generatePRD', to: 'generateChecklist', condition: 'Always (even on error)' },
       { from: 'generatePRD', to: 'generateBrainlift', condition: 'Always (even on error)' },
@@ -504,6 +572,10 @@ export function getWorkflowDebugInfo(): {
       {
         name: 'Post-PRD Processing',
         nodes: ['generateChecklist', 'generateBrainlift', 'generateUIPlan']
+      },
+      {
+        name: 'Streaming Features',
+        nodes: ['chatIntegration', 'providerFeatures']
       }
     ]
   }
